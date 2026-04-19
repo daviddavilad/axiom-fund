@@ -44,6 +44,7 @@ dependencies = [
 dev = [
     { name = "ipykernel" },
     { name = "mypy" },
+    { name = "pandas-stubs" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -62,6 +63,7 @@ requires-dist = [
 dev = [
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "mypy", specifier = ">=1.20.1" },
+    { name = "pandas-stubs", specifier = ">=3.0.0.260204" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.15.11" },
@@ -587,6 +589,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/41/db/fc107df31c06976764e753074cc71cbe1c7062481f668746f8d498cafcb6/pandas-2.1.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:29deb61de5a8a93bdd033df328441a79fcf8dd3c12d5ed0b41a395eef9cd76f0", size = 11652903, upload-time = "2023-09-20T21:04:48.846Z" },
     { url = "https://files.pythonhosted.org/packages/7c/ac/050be15bca8dc1cbce67d3425507a3eee18190e44ff3583d926701d8ca46/pandas-2.1.1-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:4f99bebf19b7e03cf80a4e770a3e65eee9dd4e2679039f542d7c1ace7b7b1daa", size = 12364214, upload-time = "2023-09-20T21:04:52.332Z" },
     { url = "https://files.pythonhosted.org/packages/89/c8/466196b756d74326820fe227743105fda0198a133f18916610e068540f0f/pandas-2.1.1-cp312-cp312-win_amd64.whl", hash = "sha256:84e7e910096416adec68075dc87b986ff202920fb8704e6d9c8c9897fe7332d6", size = 10525986, upload-time = "2023-09-20T21:04:55.448Z" },
+]
+
+[[package]]
+name = "pandas-stubs"
+version = "3.0.0.260204"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/27/1d/297ff2c7ea50a768a2247621d6451abb2a07c0e9be7ca6d36ebe371658e5/pandas_stubs-3.0.0.260204.tar.gz", hash = "sha256:bf9294b76352effcffa9cb85edf0bed1339a7ec0c30b8e1ac3d66b4228f1fbc3", size = 109383, upload-time = "2026-02-04T15:17:17.247Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/2f/f91e4eee21585ff548e83358332d5632ee49f6b2dcd96cb5dca4e0468951/pandas_stubs-3.0.0.260204-py3-none-any.whl", hash = "sha256:5ab9e4d55a6e2752e9720828564af40d48c4f709e6a2c69b743014a6fcb6c241", size = 168540, upload-time = "2026-02-04T15:17:15.615Z" },
 ]
 
 [[package]]

@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.15.11",
     "mypy>=1.20.1",
     "ipykernel>=7.2.0",
+    "pandas-stubs>=3.0.0.260204",
 ]
 
 [tool.ruff]
@@ -87,8 +88,9 @@ exclude = [
 module = [
     "wrds",
     "wrds.*",
-    "pyarrow",
-    "pyarrow.*",
+    "sqlalchemy",
+    "sqlalchemy.*",
+    "dotenv",
 ]
 ignore_missing_imports = true
 

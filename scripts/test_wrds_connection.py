@@ -16,13 +16,19 @@ This is a diagnostic script, not part of the production pipeline.
 
 from __future__ import annotations
 
+# Import _warnings first to suppress wrds library SyntaxWarnings before
+# any wrds-adjacent modules are imported. Ordering here is intentional;
+# ruff's import-sorting rule is suppressed for this block.
+# ruff: noqa: I001
+
 import os
 import sys
+
+from axiom_fund import _warnings  # noqa: F401
 
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import text
-
 
 def main() -> int:
     """Run the connection test. Returns 0 on success, 1 on failure."""
