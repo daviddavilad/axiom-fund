@@ -10,10 +10,10 @@ authors = [
 license = { text = "MIT" }
 dependencies = [
     "wrds>=3.1.6",
-    "pandas>=3.0.2",
-    "numpy>=2.4.4",
     "pyarrow>=23.0.1",
     "python-dotenv>=1.2.2",
+    "pandas>=2.1,<2.2",
+    "numpy>=1.26,<2.0",
 ]
 
 [project.urls]

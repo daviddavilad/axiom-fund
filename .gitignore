@@ -58,6 +58,8 @@ config/secrets.yaml
 .DS_Store
 .AppleDouble
 .LSOverride
+# Nano editor backup files
+*.save
 
 # Logs
 *.log
