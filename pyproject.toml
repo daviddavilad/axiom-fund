@@ -8,7 +8,13 @@ authors = [
     { name = "David Davila", email = "daviddavilacorraliza@gmail.com" }
 ]
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "pyarrow>=23.0.1",
+    "python-dotenv>=1.2.2",
+    "wrds>=3.1.6",
+]
 
 [project.urls]
 Repository = "https://github.com/daviddavilad/axiom-fund"
@@ -17,5 +23,14 @@ Repository = "https://github.com/daviddavilad/axiom-fund"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = []
+[tool.hatch.build.targets.wheel]
+packages = ["src/axiom_fund"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "mypy>=1.20.1",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.11",
+]
