@@ -1,0 +1,21 @@
+[project]
+name = "axiom-fund"
+version = "0.1.0"
+description = "Systematic U.S. equity market-neutral long/short fund prototype"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "David Davila", email = "daviddavilacorraliza@gmail.com" }
+]
+license = { text = "MIT" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/daviddavilad/axiom-fund"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

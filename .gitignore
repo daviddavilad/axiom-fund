@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+# (uv.lock SHOULD be committed — do not ignore it)
+
+# Data (never commit data files to git)
+data/raw/
+data/processed/
+data/interim/
+*.parquet
+*.csv
+*.xlsx
+*.xls
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Credentials (critical — never commit)
+.env
+.env.*
+*.pem
+*.key
+wrds_credentials*
+credentials.json
+config/secrets.yaml
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/
+
+# Reports output (regenerable; optional — comment out if you want to track)
+reports/figures/
+reports/tearsheets/
