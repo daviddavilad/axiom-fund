@@ -19,16 +19,32 @@ from this project is: "the methodology and infrastructure are sound, and under t
 specific historical data and assumptions used, the strategy would have produced these
 results." No stronger claim is supported.
 
-## 2. Universe restriction
+## 2. Universe construction and subscription gap
 
-Universe is restricted to S&P 500 + S&P MidCap 400 (~900 names). This excludes:
-- Small-caps (Russell 2000), where short-side borrow cannot be realistically modeled
-- Micro-caps, where academic anomaly premia are strongest but liquidity is lowest
-- International equities entirely
-- ADRs and non-common-stock securities
+Universe is restricted to the top 1,000 U.S. common stocks by CRSP market
+capitalization (see `strategy_spec.md` §3). This reflects two deliberate
+choices:
 
-This restriction is methodologically defensible (see `strategy_spec.md` §3) but it means
-the results are not generalizable to small-cap or international strategies.
+1. **Rules-based over committee-selected.** Using a transparent market-cap
+   rule rather than S&P 500/400 committee decisions is methodologically
+   preferable for a systematic strategy and ensures full reproducibility.
+
+2. **Forced by subscription tier.** UNM's WRDS subscription does not include
+   `crsp_a_indexes` (S&P index constituents) or `crsp_a_ccm` (CRSP/Compustat
+   Merged link table). The rules-based construction is the methodologically
+   clean response to this constraint.
+
+Residual limitations:
+- Small-caps (below top 1,000) excluded; short-side borrow cannot be
+  realistically modeled without institutional prime broker data
+- Micro-caps excluded entirely
+- International equities excluded entirely
+- ADRs, REITs, LPs, CEFs excluded per filter rules
+- The resulting universe is not directly benchmarkable to S&P 500 or other
+  index returns without careful adjustment
+
+Results cannot be generalized to small-cap, international, or non-rules-based
+strategies.
 
 ## 3. Known signal decay risks
 
@@ -72,6 +88,40 @@ strategies underperformed sharply.
   various regional bans are not modeled.
 - **Sensitivity analysis** at 100 bps and 200 bps borrow will be reported but does not
   capture the full tail risk of short positions.
+
+## 5.5 CRSP–Compustat linking via CUSIP
+
+The CRSP/Compustat Merged (CCM) link table is the academic standard for joining
+CRSP PERMNO to Compustat GVKEY. It is not accessible in our WRDS subscription
+tier. We replace it with an 8-digit CUSIP-based merge.
+
+Known risks of CUSIP-based linking:
+- **Share class ambiguity.** A company with multiple share classes (e.g.,
+  Google's GOOG/GOOGL, Berkshire's BRK.A/BRK.B) shares the first 6 digits of
+  CUSIP but differs in the last 3. Using 8-digit matching handles most cases
+  but may cause occasional misattribution.
+- **Historical CUSIP changes.** CUSIPs occasionally change (corporate actions,
+  reorganizations). CRSP's `ncusip` field captures some changes but not all.
+- **Coverage gaps.** Some CRSP names have no CUSIP in CRSP; some Compustat
+  names have no CUSIP in Compustat. These are dropped from fundamentals-
+  dependent signals.
+
+Expected match rate: 85–92% based on academic literature. Actual match rate
+will be reported in the white paper.
+
+**Pre-committed exit criterion:** If the realized match rate is below 85%, the
+project will pause for explicit re-evaluation, with likely options being:
+(a) purchase Nasdaq Data Link Sharadar SEP + SF1 (~$100/month) for three
+months to obtain clean linked fundamentals, or (b) narrow the universe to
+large-caps where CUSIP matching is most reliable and accept the reduced
+breadth. This exit criterion is pre-committed before the matching code is
+written.
+
+Unmatched names are dropped from the Gross Profitability signal but retained
+in the Idiosyncratic Volatility and Residual Momentum signals. The composite
+score for unmatched names uses only the two price-based signals, which
+introduces a small structural bias relative to matched names. This bias will
+be quantified in the robustness section of the white paper.
 
 ## 6. EDGAR XBRL parser limitations (v1.5 parallel work)
 

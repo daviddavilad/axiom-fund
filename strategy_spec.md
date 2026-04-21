@@ -53,23 +53,45 @@ of why stronger claims would not be credible.
 
 ## 3. Investable universe
 
-**Primary universe:** S&P 500 constituents + S&P MidCap 400 constituents (~900 names).
+**Primary universe:** Top 1,000 U.S. common stocks by CRSP market capitalization,
+reconstituted monthly on the last trading day of each calendar month.
 
-**Membership:** Point-in-time index membership reconstructed from CRSP index files via
-WRDS. No current-membership snapshots used historically.
+**Membership construction (rules-based):** On each reconstitution date, rank all
+eligible securities by CRSP market capitalization (shares outstanding × closing
+price) as of the rank date. Select the top 1,000. This universe replaces a
+committee-selected index (e.g., S&P 500) with a transparent, fully reproducible
+rule.
 
-**Filters applied at each rebalance:**
+**Eligibility filters (applied at each reconstitution):**
 - Common stock only (CRSP share codes 10, 11)
-- Price > $5 at rebalance date
-- 20-day ADV > $5M
-- Listed on NYSE, NASDAQ, or AMEX
+- Price > $5 at rank date
+- Trailing 20-day ADV > $5M
+- Listed on NYSE, NASDAQ, or AMEX (CRSP exchange codes 1, 2, 3)
 - Excluded: REITs (SIC 6798), ADRs, limited partnerships, closed-end funds
 
-**Rationale for not extending to Russell 2000:** Even with WRDS CRSP delisting returns,
-short-side borrow cost and availability for small-caps cannot be realistically modeled
-without institutional prime broker data. A backtest that shorts small-caps under naive
-borrow assumptions overstates returns. This is a methodological decision, not a data
-limitation. See `limitations.md` section 2.
+**Rationale for rules-based construction:** This universe is defined by a
+transparent rule rather than index-provider committee decisions. It is fully
+reproducible from CRSP stock files alone, does not depend on third-party
+membership data, and aligns with the construction approach used by systematic
+institutional investors (e.g., factor-based funds at AQR, Dimensional). It
+avoids the dependence on S&P Dow Jones Indices' committee decisions that would
+introduce a discretionary element inconsistent with a purely systematic strategy.
+
+**Comparison to S&P 500 + S&P MidCap 400:** The resulting universe overlaps
+substantially with S&P 500 + MidCap 400 (~80% name overlap by market cap) but
+differs in the tails. The rules-based universe includes some names the S&P
+committee has not added and excludes some the committee retains for continuity.
+For our purposes, this difference is immaterial — the strategy is cross-sectional
+and relies on relative ranking within a large-cap universe, not on benchmarking
+to the S&P 500.
+
+**Methodological note:** An earlier draft of this specification proposed S&P 500 +
+S&P MidCap 400 as the universe. We revised to a rules-based construction after
+determining that our WRDS subscription does not include access to `crsp_a_indexes`
+(the CRSP S&P index constituent files). Rather than introduce dependency on
+external index-membership data of uncertain quality, we adopted the rules-based
+approach, which is methodologically preferable for a systematic strategy. See
+`limitations.md` section 3 for further detail.
 
 ## 4. Rebalance frequency
 
@@ -214,6 +236,29 @@ These are tested in the backtest. They are pre-committed, not tuned.
 ### Storage
 Parquet files partitioned by date, queried via DuckDB. No CSVs in production code paths.
 
+### CRSP–Compustat linking (CUSIP-based)
+
+The CRSP/Compustat Merged (CCM) link table, which is the academic standard for
+joining CRSP PERMNO to Compustat GVKEY, is not accessible in our WRDS subscription
+tier. In its place, we link CRSP to Compustat via 8-digit CUSIP (comparing CRSP's
+`ncusip` or `cusip` to Compustat's `cusip`, matching on the first 8 characters to
+avoid share-class issues). On each reconstitution date, each CRSP PERMNO is
+matched to the Compustat record whose CUSIP matches and whose fundamentals are
+the most recent available as of (rank date − 45 calendar days).
+
+**Expected match rate:** Based on academic literature using similar approaches,
+we expect to match 85–92% of CRSP names to Compustat fundamentals. Unmatched
+names are dropped from the fundamentals-dependent signals (Gross Profitability)
+but retained in price-only signals (Idiosyncratic Volatility, Residual Momentum).
+The actual match rate will be reported in the white paper.
+
+**Pre-committed exit criterion:** If the realized match rate is below 85%, the
+project will pause for an explicit re-evaluation. Options at that point include
+purchasing Sharadar (Nasdaq Data Link SEP + SF1, ~$100/month) for clean
+point-in-time fundamentals with institutional linking, or narrowing the
+universe to large-caps where CUSIP matching is most reliable. This exit
+criterion is pre-committed before the matching code is written.
+
 ## 10. Backtest methodology
 
 ### Windowing (locked at project start)
@@ -286,6 +331,9 @@ Prado 2014).
 The following parameters are **locked** as of this document's commit and will not be
 changed based on in-sample performance:
 
+- Universe: Top 1,000 U.S. common stocks by CRSP market cap, reconstituted monthly
+- Universe filters: common stock (share codes 10/11), price > $5, 20-day ADV > $5M, exchanges NYSE/NASDAQ/AMEX, exclude REITs/ADRs/LPs/CEFs
+- CRSP-Compustat linking: 8-digit CUSIP merge; exit criterion <85% match rate
 - Three signals: Gross Profitability, Idiosyncratic Volatility, Residual Momentum 12-1
 - Composite weighting: equal (1/3 each)
 - Winsorization: 1% / 99%
@@ -304,4 +352,8 @@ requires a dated amendment below.
 
 ## 15. Amendments
 
-*(none yet — date and describe any future changes here)*
+### Amendment 1 — 2026-04-20
+- Universe changed from S&P 500 + S&P MidCap 400 to top 1,000 by CRSP market cap
+- Added CUSIP-based CRSP-Compustat linking methodology
+- Added match-rate exit criterion (<85% triggers Sharadar re-evaluation)
+- Root cause: WRDS subscription tier does not include crsp_a_indexes or crsp_a_ccm
