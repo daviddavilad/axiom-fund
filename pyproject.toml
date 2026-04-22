@@ -106,6 +106,15 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: tests requiring external services (WRDS, network). Run with `uv run pytest` to include; exclude with `-m 'not integration'`.",
+]
+filterwarnings = [
+    # wrds 3.1.6 uses SQLAlchemy 1.4 patterns that trigger this warning.
+    # We pin sqlalchemy<2.0 via uv.lock so the hypothetical upgrade the
+    # warning is about cannot happen. Suppress for clean test output.
+    "ignore::sqlalchemy.exc.RemovedIn20Warning",
+]
 
 [tool.coverage.run]
 source = ["src/axiom_fund"]

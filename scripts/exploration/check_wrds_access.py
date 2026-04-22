@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 import sys
 
-from axiom_fund import _warnings  # noqa: F401
-
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import text
+
+from axiom_fund import _warnings  # noqa: F401
 
 
 def main() -> int:
