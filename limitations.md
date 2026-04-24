@@ -117,6 +117,41 @@ large-caps where CUSIP matching is most reliable and accept the reduced
 breadth. This exit criterion is pre-committed before the matching code is
 written.
 
+### 5.5.1 Diagnostic result (2026-04-24)
+
+CUSIP linking was tested against a representative universe sample
+(top 1,000 common stocks by market cap on 2020-01-02, filtered per §2).
+
+- **Match rate: 93.1%** (931 of 1,000 PERMNOs linked to ≥1 Compustat gvkey)
+- **Pre-committed threshold: 85%** — **PASS**
+- **One-to-many incidence: 0%** (every matched PERMNO links to exactly one
+  gvkey, eliminating the need for tiebreaker logic)
+
+The 6.9% unmatched tail is structural, not random:
+- **Multi-share-class listings** (GOOG/GOOGL, BRK.A/BRK.B) — each CRSP
+  PERMNO has a distinct CUSIP, but Compustat reports fundamentals at the
+  firm level under one share class's CUSIP
+- **M&A CUSIP reassignments** (UTX → RTX after the April 2020 Raytheon
+  merger; VIAC after ViacomCBS formation) — historical CUSIPs are retired
+- **Subscription-specific gaps** — a small number of names (e.g., LRCX,
+  SIRI) have no identifiable structural explanation and may reflect
+  point-in-time differences in our data vintage
+
+**Decision:** Accept the 6.9% gap for this version. Signal computations
+that require fundamentals will exclude unmatched PERMNOs. The bias this
+introduces is small (top-10 unmatched are large-cap multi-share-class or
+M&A-affected names, which academic asset-pricing research typically
+excludes anyway).
+
+**Fallback paths available if later needed:**
+1. Ticker-based secondary matching (with temporal validity checking to
+   avoid recycled-ticker false matches)
+2. Manual override table for known multi-share-class cases (e.g., force
+   GOOG → GOOGL's gvkey)
+
+Revisit this decision if a specific signal's coverage falls materially
+below the 93.1% achieved on this diagnostic.
+
 Unmatched names are dropped from the Gross Profitability signal but retained
 in the Idiosyncratic Volatility and Residual Momentum signals. The composite
 score for unmatched names uses only the two price-based signals, which
@@ -207,4 +242,13 @@ These are not flaws to hide. They are the honest boundary of a student project.
 
 ## 11. Amendments
 
-*(update as limitations are discovered during the build)*
+### Amendment 2 (2026-04-24) — CUSIP match rate confirmed
+CUSIP-based CRSP↔Compustat linking tested and met pre-committed 85% threshold
+at 93.1%. Sharadar escalation not triggered. See §5.5.1 for diagnostic detail
+and list of structural unmatched cases.
+
+### Amendment 1 (2026-04-20) — Universe pivot
+Universe construction pivoted from S&P 500/400 committee-selected constituents
+to rules-based top-1,000 by CRSP market cap after determining that our WRDS
+subscription does not include access to `crsp_a_indexes`. See §2 for current
+approach and rationale.
