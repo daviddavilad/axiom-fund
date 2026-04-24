@@ -2,8 +2,8 @@
 
 Given a set of PERMNOs and a date range, returns point-in-time (PIT) quarterly
 fundamental data from comp.fundq, joined with industry metadata from
-comp.company. Linking is via 8-digit CUSIP prefix (see limitations.md §5.5.1
-for the diagnostic; 93.1% match rate on top-1000 universe sample).
+comp.company. comp.company. Linking is via 8-digit CUSIP prefix (see docs/limitations.md
+§5.5.1 for the diagnostic; 93.1% match rate on top-1000 universe sample).
 
 Point-in-time correctness
 -------------------------
@@ -168,7 +168,7 @@ class Fundamentals:
             Long-format panel, sorted by (permno, rdq). Columns match
             FUNDAMENTAL_COLUMNS. PERMNOs that cannot be linked to a
             Compustat gvkey are silently dropped (per §5.5.1 of
-            limitations.md).
+            docs/limitations.md).
 
         Raises
         ------

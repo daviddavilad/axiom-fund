@@ -12,7 +12,7 @@ construction, and returns panel. No alpha generation code yet.
 
 This repository contains a research prototype. It is **not a live fund** and
 no performance figures produced by this code constitute evidence of alpha.
-See [`limitations.md`](./limitations.md) for a pre-committed enumeration of
+See [`docs/limitations.md`](./docs/limitations.md) for a pre-committed enumeration of
 known methodological limitations.
 
 ## Strategy summary
@@ -24,13 +24,15 @@ known methodological limitations.
 - **Backtest window:** Train 2005–2014, OOS 2015–2022, strict holdout 2023–2025
 - **Data:** CRSP + Compustat via WRDS; FRED; Ken French Data Library
 
-Full specification in [`strategy_spec.md`](./strategy_spec.md).
+Full specification in [`docs/strategy_spec.md`](./docs/strategy_spec.md).
 
 ## Project layout
 
     axiom-fund/
-    ├── strategy_spec.md          # Locked strategy specification
-    ├── limitations.md            # Pre-committed limitations
+    ├── docs/
+    │   ├── strategy_spec.md      # Locked strategy specification
+    │   ├── limitations.md        # Pre-committed limitations
+    │   └── signal_design.md      # Signal layer design decisions
     ├── pyproject.toml            # Project metadata and dependencies
     ├── uv.lock                   # Locked dependency resolution
     ├── src/axiom_fund/           # Main package (signals, portfolio, risk, backtest)

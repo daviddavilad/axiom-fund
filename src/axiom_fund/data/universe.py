@@ -1,11 +1,11 @@
 """Rules-based universe construction from CRSP.
 
 Given a rebalance date, returns the top-N U.S. common stocks by market
-capitalization that pass the eligibility filters defined in strategy_spec.md
+capitalization that pass the eligibility filters defined in docs/strategy_spec.md
 section 3.
 
 The universe is intentionally defined by a transparent rule rather than
-committee-selected index membership. See strategy_spec.md for rationale.
+committee-selected index membership. See docs/strategy_spec.md for rationale.
 
 Usage:
     import wrds
@@ -44,9 +44,9 @@ class _WrdsConnection(Protocol):
 class UniverseConfig:
     """Configuration for rules-based universe construction.
 
-    All parameters have defaults matching strategy_spec.md section 14.
+    All parameters have defaults matching docs/strategy_spec.md section 14.
     These defaults are locked; changing them should be accompanied by
-    a dated amendment in strategy_spec.md.
+    a dated amendment in docs/strategy_spec.md.
     """
 
     size: int = 1000

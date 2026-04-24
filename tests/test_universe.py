@@ -35,7 +35,7 @@ WrdsConn = Any
 
 
 class TestUniverseConfig:
-    """UniverseConfig defaults match strategy_spec.md section 14."""
+    """UniverseConfig defaults match docs/strategy_spec.md section 14."""
 
     def test_default_size_is_1000(self) -> None:
         assert UniverseConfig().size == 1000
