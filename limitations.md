@@ -123,6 +123,12 @@ CUSIP linking was tested against a representative universe sample
 (top 1,000 common stocks by market cap on 2020-01-02, filtered per §2).
 
 - **Match rate: 93.1%** (931 of 1,000 PERMNOs linked to ≥1 Compustat gvkey)
+- **Broader universe comparison: 82.1%** match rate against all 3,581
+  active common stocks on 2020-01-02 (not just top 1,000). Match quality
+  degrades with market cap — linking is cleanest for large, mature firms
+  and noisier for small-caps and newer listings. Since our operational
+  universe is the top 1,000, we are in the 93.1% regime. Recorded here
+  for future reference if the universe is ever broadened.
 - **Pre-committed threshold: 85%** — **PASS**
 - **One-to-many incidence: 0%** (every matched PERMNO links to exactly one
   gvkey, eliminating the need for tiebreaker logic)
