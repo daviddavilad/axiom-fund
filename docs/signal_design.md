@@ -67,21 +67,31 @@ Downstream composite logic becomes: for each (date, permno), average
 whichever z-scores are non-null, with at least 2 of 3 signals required
 for inclusion. See `strategy_spec.md` §6 for the composite rule.
 
-### 2.3 Cross-sectional z-scoring within current Universe (decision A)
+### 2.3 Cross-sectional z-scoring happens in the alignment layer (revised 2026-04-26)
 
-For each date, the signal is z-scored **across the current Universe
-(top 1000 by market cap on that date)**. Mean and standard deviation
-are computed over the universe members only.
+**Original decision (2026-04-26):** signal modules z-score within the
+current Universe.
 
-**Rationale:** the z-score represents "how attractive this name is
-relative to its peers in the investable set." Z-scoring over a
-broader population (e.g., all names with valid signal) would use
-information we don't act on, creating inconsistency between signal
-magnitudes and portfolio weights.
+**Amendment (2026-04-26 same day, after integration testing):** the
+z-scoring step moves out of signal modules and into a shared alignment
+layer (`src/axiom_fund/signals/alignment.py`). Reason: signal modules
+emit values keyed by their natural cadence (e.g., GP keyed by rdq),
+which produces tiny cross-sections (median 7 names) when z-scoring
+per-rdq. The cross-section we actually want is the full investable
+universe at each rebalance date.
 
-Note: this means z-scoring happens **after** the universe filter,
-not before. Names outside the universe are dropped from the z-score
-computation regardless of whether their raw signal value is valid.
+The alignment layer's responsibility:
+
+1. Takes a raw signal panel (long-format with at minimum
+   `permno, date_filed, raw_signal`) and a list of rebalance dates
+2. For each rebalance date and each PERMNO in the current Universe,
+   finds the most-recent `date_filed` signal value (forward-fill)
+3. Winsorizes within Universe at each rebalance date
+4. Z-scores within Universe at each rebalance date
+
+This separation means signal modules become pure functions of
+"compute the raw signal value per natural reporting unit," and the
+alignment layer handles all calendar-and-cross-section logic.
 
 ### 2.4 Pure-function interface (decision: raw DataFrames)
 
@@ -91,13 +101,27 @@ ReturnsPanel, or Fundamentals classes directly.
 
 ```python
 def compute_gross_profitability(
-    universe_df: pd.DataFrame,        # from Universe.as_of across dates
     fundamentals_df: pd.DataFrame,    # from Fundamentals.fetch_quarterly
     start_date: str | date,
     end_date: str | date,
+) -> pd.DataFrame:
+    """Compute raw GP values per (permno, rdq).
+
+    Returns long-format DataFrame with columns:
+        permno, gvkey, date_filed, date_period, revtq, cogsq, atq, raw_signal
+    """
+
+def align_signal(
+    raw_signal_df: pd.DataFrame,      # from any compute_<signal>() function
+    universe_df: pd.DataFrame,        # from Universe.as_of across dates
+    rebalance_dates: list[date],      # rebalance calendar
     winsorize_pct: float = 0.01,
 ) -> pd.DataFrame:
-    """Returns long-format: date, permno, raw_signal, winsorized, z_score."""
+    """Align a raw signal to rebalance dates, winsorize, and z-score
+    within the current Universe.
+
+    Returns long-format: date, permno, raw_signal, winsorized, z_score.
+    """
 ```
 
 Analogous signatures for `compute_idiosyncratic_volatility` and
@@ -115,29 +139,41 @@ Analogous signatures for `compute_idiosyncratic_volatility` and
 
 ---
 
-## 3. Signal pipeline per date
+## 3. Signal pipeline
 
-For each signal, and for each date in the output:
+The full pipeline now has two stages:
 
-1. **Filter** the input DataFrame to rows where `permno` is in the
-   current Universe (as of that date)
-2. **Compute** the raw signal value per PERMNO (signal-specific formula)
-3. **Winsorize** within the filtered set: clip at the 1st and 99th
+### Stage 1 — Raw signal computation (in each signal module)
+
+For each row in the input fundamentals/returns panel:
+
+1. **Compute** the raw signal value (signal-specific formula)
+2. **Output** the raw signal keyed by its natural unit (e.g., per
+   `(permno, rdq)` for GP, per `(permno, trading_date)` for IVol)
+
+No universe filter, no winsorize, no z-score. The output is just the
+raw signal panel with whatever metadata is useful for diagnostics
+(e.g., the input components used to compute it).
+
+### Stage 2 — Alignment to rebalance calendar (in alignment layer)
+
+For each rebalance date:
+
+1. **For each PERMNO in the current Universe**, find the most-recent
+   raw signal value with `date_filed <= rebalance_date` (forward-fill)
+2. **Winsorize** within the Universe at the 1st/99th cross-sectional
    percentile (configurable via `winsorize_pct`)
-4. **Z-score** the winsorized values: subtract cross-sectional mean,
+3. **Z-score** the winsorized values: subtract cross-sectional mean,
    divide by cross-sectional std
 
-Each step operates **cross-sectionally per date**. No time-series
-operations inside the signal module — those belong to the portfolio
-layer.
+Each step in stage 2 operates **cross-sectionally per rebalance date**
+across the Universe. No time-series operations.
 
-The output columns capture each step:
-- `raw_signal`: the output of step 2 (before winsorization)
-- `winsorized`: the output of step 3
-- `z_score`: the output of step 4
+The aligned output panel has columns:
+`date, permno, raw_signal, winsorized, z_score`
 
-Downstream code uses `z_score` for the composite. The other columns
-are retained for diagnostics and robustness checks.
+where `date` is the rebalance date and `raw_signal` is the (possibly
+forward-filled) value of the raw signal as of that date.
 
 ---
 
