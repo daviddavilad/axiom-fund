@@ -113,6 +113,13 @@ class TestToWidePureFunction:
             "prc_adj": pd.array(
                 [10.0, 9.95, 10.15, 20.0, 19.8, 19.9], dtype="Float64"
             ),
+            "shrout": pd.array(
+                [1000.0, 1000.0, 1000.0, 2000.0, 2000.0, 2000.0], dtype="Float64"
+            ),
+            "marketcap": pd.array(
+                [10000000.0, 9950000.0, 10150000.0, 40000000.0, 39600000.0, 39800000.0],
+                dtype="Float64",
+            ),
             "is_delisting": pd.array(
                 [False, False, False, False, False, False], dtype="bool"
         ),
@@ -151,6 +158,8 @@ class TestToWidePureFunction:
                 "vol": pd.array([pd.NA], dtype="Float64"),
                 "prc": pd.array([pd.NA], dtype="Float64"),
                 "prc_adj": pd.array([pd.NA], dtype="Float64"),
+                "shrout": pd.array([pd.NA], dtype="Float64"),
+                "marketcap": pd.array([pd.NA], dtype="Float64"),
                 "is_delisting": pd.array([True], dtype="bool"),
             }
         )

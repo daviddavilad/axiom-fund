@@ -13,7 +13,6 @@ import sys
 
 from axiom_fund import _warnings  # noqa: F401
 
-import pandas as pd
 from dotenv import load_dotenv
 
 from axiom_fund.data.ff_factors import FFFactors

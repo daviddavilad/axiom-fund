@@ -55,6 +55,8 @@ PANEL_COLUMNS: tuple[str, ...] = (
     "vol",
     "prc",
     "prc_adj",
+    "shrout",
+    "marketcap",
     "is_delisting",
 )
 
@@ -187,7 +189,9 @@ class ReturnsPanel:
                 retx,
                 vol,
                 prc,
-                ABS(prc) / NULLIF(cfacpr, 0) AS prc_adj
+                ABS(prc) / NULLIF(cfacpr, 0) AS prc_adj,
+                shrout,
+                ABS(prc) * shrout * 1000 AS marketcap
             FROM crsp.dsf
             WHERE permno IN {permno_list}
               AND date >= :start_date
@@ -256,13 +260,15 @@ class ReturnsPanel:
                 "vol": pd.Series([pd.NA] * len(delist_returns), dtype="Float64"),
                 "prc": pd.Series([pd.NA] * len(delist_returns), dtype="Float64"),
                 "prc_adj": pd.Series([pd.NA] * len(delist_returns), dtype="Float64"),
+                "shrout": pd.Series([pd.NA] * len(delist_returns), dtype="Float64"),
+                "marketcap": pd.Series([pd.NA] * len(delist_returns), dtype="Float64"),
                 "is_delisting": True,
             }
         )
 
         # Cast numeric columns in dsf_panel to nullable types to align
         # with delist_panel; this preserves dtype consistency on concat.
-        for col in ("vol", "prc", "prc_adj"):
+        for col in ("vol", "prc", "prc_adj", "shrout", "marketcap"):
             dsf_panel[col] = dsf_panel[col].astype("Float64")
 
         combined = pd.concat([dsf_panel, delist_panel], ignore_index=True)
