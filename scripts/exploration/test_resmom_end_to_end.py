@@ -13,7 +13,6 @@ import sys
 
 from axiom_fund import _warnings  # noqa: F401
 
-import pandas as pd
 from dotenv import load_dotenv
 
 from axiom_fund.data.fundamentals import Fundamentals
@@ -93,7 +92,7 @@ def main() -> int:
                 continue
             ggroup = sub["ggroup"].iloc[0] if len(sub) > 0 else "?"
             print(
-                f"{ticker:<8} {str(ggroup):<6} "
+                f"{ticker:<8} {ggroup!s:<6} "
                 f"{sub['size'].mean():>10.2f} "
                 f"{sub['raw_signal'].mean():>12.4f}"
             )

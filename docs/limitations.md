@@ -248,6 +248,35 @@ These are not flaws to hide. They are the honest boundary of a student project.
 
 ## 11. Amendments
 
+### Amendment 3 (2026-05-02) — Universe contains dual-class shares (discovered)
+
+The Universe selection (top-1000 by market cap) does not deduplicate
+multi-class share structures. As a result, both GOOG (Alphabet class C)
+and GOOGL (Alphabet class A) appear as separate names with separate
+PERMNOs, despite being economically the same security.
+
+Discovered during covariance estimation testing on real WRDS data:
+the 14542↔90319 pair (GOOG↔GOOGL) showed 0.998 daily return
+correlation over 2020. BRK.A and BRK.B similarly appear as separate
+PERMNOs and showed 0.971 correlation.
+
+Implications:
+- Optimizer would double-count exposure to dual-class names
+- Covariance estimator correctly identifies these as near-singular
+  pairs (very high correlation), but the optimization solution is
+  still suboptimal — the budget gets split between functionally
+  identical securities
+
+Mitigation (deferred to Phase 4 or pre-backtest):
+Filter the Universe to keep only the highest-volume share class per
+underlying company. CRSP `crsp.stocknames` table has `shrcls` column;
+group by `comnam` and keep the row with highest `vol` over a trailing
+window. This removes ~5-10 names from a top-1000 universe.
+
+For Phase 3 development we proceed with the unfiltered universe; the
+covariance estimator and optimizer should still produce mathematically
+valid output, just with a small efficiency loss from the duplicates.
+
 ### Amendment 2 (2026-04-24) — CUSIP match rate confirmed
 CUSIP-based CRSP↔Compustat linking tested and met pre-committed 85% threshold
 at 93.1%. Sharadar escalation not triggered. See §5.5.1 for diagnostic detail

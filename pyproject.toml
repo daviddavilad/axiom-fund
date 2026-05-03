@@ -58,7 +58,7 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
 ]
-allowed-confusables = ["α", "β", "ε", "×", "√"]
+allowed-confusables = ["α", "β", "ε", "γ", "κ", "π", "Σ", "×", "√", "–"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["N802", "N803"]  # test functions can have non-PEP8 names
