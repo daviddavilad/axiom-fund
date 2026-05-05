@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=2.1,<2.2",
     "numpy>=1.26,<2.0",
     "statsmodels>=0.14",
+    "cvxpy>=1.5",
 ]
 
 [project.urls]

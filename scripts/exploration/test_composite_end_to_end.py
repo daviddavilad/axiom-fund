@@ -140,7 +140,7 @@ def main() -> int:
                 f"  | composite_z mean: {group['composite_z'].mean():.4f}"
                 f"  | std: {group['composite_z'].std():.4f}"
             )
-            print(f"  n_signals breakdown:")
+            print("  n_signals breakdown:")
             print(group["n_signals"].value_counts().sort_index().to_string())
             print(f"  composite_z range: [{group['composite_z'].min():.3f}, "
                   f"{group['composite_z'].max():.3f}]")
