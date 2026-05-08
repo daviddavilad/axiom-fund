@@ -185,7 +185,11 @@ def compute_residual_momentum(
     # ------------------------------------------------------------------
     # For each month, run: monthly_ret ~ industry_dummies + log(marketcap)
     # Extract residuals.
-    monthly["log_size"] = np.log(monthly["month_end_marketcap"].clip(lower=1.0))
+    # Cast through numpy float64 explicitly — pandas' Float64Dtype (nullable
+    # float) returns object-dtype arrays from .to_numpy() if any NA is present,
+    # which breaks downstream statsmodels OLS calls.
+    log_size_raw = np.log(monthly["month_end_marketcap"].clip(lower=1.0))
+    monthly["log_size"] = log_size_raw.astype("float64")
     monthly = monthly.dropna(subset=["monthly_ret", "log_size"])
 
     monthly["residual"] = np.nan
