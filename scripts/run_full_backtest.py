@@ -24,7 +24,6 @@ from pathlib import Path
 
 from axiom_fund import _warnings  # noqa: F401
 
-import pandas as pd
 from dotenv import load_dotenv
 
 from axiom_fund.backtest.engine import run_historical_backtest
@@ -79,7 +78,7 @@ def main() -> int:
     print(f"Universe size:        Top-{UNIVERSE_SIZE} by market cap")
     print(f"Holding period:       {HOLDING_DAYS} trading days (~1 month)")
     print(f"Risk aversion (λ):    {RISK_AVERSION}")
-    print(f"Neutrality:           Dollar + Beta + Sector (all on)")
+    print("Neutrality:           Dollar + Beta + Sector (all on)")
     print(f"Output directory:     {CACHE_DIR}")
     print("=" * 70)
     print()

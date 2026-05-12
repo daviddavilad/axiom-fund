@@ -291,13 +291,13 @@ def _compute_buy_and_hold_returns(
 # This converts O(n_periods) SQL queries into O(1) per data source.
 
 
+# Database fetcher protocol (avoid hard dep on wrds.Connection in type hints)
+from typing import Protocol  # noqa: E402
+
+from axiom_fund.data.ff_factors import FFFactors  # noqa: E402
 from axiom_fund.data.fundamentals import Fundamentals  # noqa: E402
 from axiom_fund.data.returns import ReturnsPanel  # noqa: E402
 from axiom_fund.data.universe import Universe  # noqa: E402
-from axiom_fund.data.ff_factors import FFFactors  # noqa: E402
-
-# Database fetcher protocol (avoid hard dep on wrds.Connection in type hints)
-from typing import Protocol  # noqa: E402
 
 
 class _DBLike(Protocol):
@@ -364,7 +364,7 @@ def _build_cache(
     # Universe per rebalance date — must call as_of() per date because
     # universe composition changes month to month
     # ------------------------------------------------------------------
-    universe_obj = Universe(db)
+    universe_obj = Universe(db)  # type: ignore[arg-type]
     universe_rows: list[pd.DataFrame] = []
     permnos_all: set[int] = set()
     for rdate in rebalance_dates:
@@ -380,7 +380,7 @@ def _build_cache(
     # ------------------------------------------------------------------
     # Returns: ONE call covering all permnos × full date range
     # ------------------------------------------------------------------
-    returns_full = ReturnsPanel(db).fetch(
+    returns_full = ReturnsPanel(db).fetch(  # type: ignore[arg-type]
         permnos=permnos_list,
         start_date=data_start.strftime("%Y-%m-%d"),
         end_date=data_end.strftime("%Y-%m-%d"),
@@ -389,7 +389,7 @@ def _build_cache(
     # ------------------------------------------------------------------
     # Fundamentals: ONE call
     # ------------------------------------------------------------------
-    fundamentals_full = Fundamentals(db).fetch_quarterly(
+    fundamentals_full = Fundamentals(db).fetch_quarterly(  # type: ignore[arg-type]
         permnos=permnos_list,
         start_date=fundamentals_start.strftime("%Y-%m-%d"),
         end_date=latest.strftime("%Y-%m-%d"),
