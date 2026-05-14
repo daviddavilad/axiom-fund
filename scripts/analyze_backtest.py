@@ -10,7 +10,7 @@ from axiom_fund.backtest.metrics import compute_performance_metrics
 
 
 def main() -> int:
-    summary_path = Path("data/cache/backtest_full/backtest_summary.parquet")
+    summary_path = Path("data/cache/backtest_full_top1000/backtest_summary.parquet")
     if not summary_path.exists():
         print(f"ERROR: {summary_path} not found. Run scripts/run_full_backtest.py first.")
         return 1

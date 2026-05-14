@@ -127,6 +127,7 @@ class BacktestPeriodResult:
 def run_backtest_period(
     inputs: BacktestPeriodInputs,
     risk_aversion: float = _DEFAULT_RISK_AVERSION,
+    position_cap: float = 0.015,
     constrain_dollar_neutral: bool = True,
     constrain_beta_neutral: bool = True,
     constrain_sector_neutral: bool = True,
@@ -207,6 +208,7 @@ def run_backtest_period(
         alpha=inputs.alpha,
         covariance=inputs.covariance,
         risk_aversion=risk_aversion,
+        position_cap=position_cap,
         betas=inputs.betas,
         sectors=inputs.sectors,
         constrain_dollar_neutral=constrain_dollar_neutral,
@@ -649,6 +651,7 @@ def run_historical_backtest(
     end_date: str | pd.Timestamp,
     universe_size: int = 100,
     risk_aversion: float = _DEFAULT_RISK_AVERSION,
+    position_cap: float = 0.015,
     constrain_dollar_neutral: bool = True,
     constrain_beta_neutral: bool = True,
     constrain_sector_neutral: bool = True,
@@ -663,7 +666,7 @@ def run_historical_backtest(
     start_date, end_date : Bounds on the rebalance date range. Last
         business day of each month within these bounds is used.
     universe_size : Top-N universe each period (default 100).
-    risk_aversion, constrain_*, holding_days : passed to run_backtest_period.
+    risk_aversion, position_cap, constrain_*, holding_days : passed to run_backtest_period.
     cache_dir : Optional directory to checkpoint per-period results.
         If provided, each period's result is saved as Parquet immediately
         after the period runs.
@@ -729,6 +732,7 @@ def run_historical_backtest(
             result = run_backtest_period(
                 inputs=inputs,
                 risk_aversion=risk_aversion,
+                position_cap=position_cap,
                 constrain_dollar_neutral=constrain_dollar_neutral,
                 constrain_beta_neutral=constrain_beta_neutral,
                 constrain_sector_neutral=constrain_sector_neutral,

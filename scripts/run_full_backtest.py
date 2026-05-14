@@ -32,10 +32,11 @@ from axiom_fund.backtest.engine import run_historical_backtest
 # Locked parameters for this run
 START_DATE = "2015-01-01"
 END_DATE = "2025-12-31"
-UNIVERSE_SIZE = 100
+UNIVERSE_SIZE = 1000
+POSITION_CAP = 0.005  # 0.5% per name for top-1000 spec
 RISK_AVERSION = 1.0
 HOLDING_DAYS = 21
-CACHE_DIR = Path("data/cache/backtest_full")
+CACHE_DIR = Path("data/cache/backtest_full_top1000")
 
 
 def main() -> int:
@@ -59,6 +60,7 @@ def main() -> int:
         "start_date": START_DATE,
         "end_date": END_DATE,
         "universe_size": UNIVERSE_SIZE,
+        "position_cap": POSITION_CAP,
         "risk_aversion": RISK_AVERSION,
         "holding_days": HOLDING_DAYS,
         "constrain_dollar_neutral": True,
@@ -76,6 +78,7 @@ def main() -> int:
     print("=" * 70)
     print(f"Date range:           {START_DATE} → {END_DATE}")
     print(f"Universe size:        Top-{UNIVERSE_SIZE} by market cap")
+    print(f"Position cap:         {POSITION_CAP*100:.2f}% per name")
     print(f"Holding period:       {HOLDING_DAYS} trading days (~1 month)")
     print(f"Risk aversion (λ):    {RISK_AVERSION}")
     print("Neutrality:           Dollar + Beta + Sector (all on)")
@@ -93,6 +96,7 @@ def main() -> int:
             start_date=START_DATE,
             end_date=END_DATE,
             universe_size=UNIVERSE_SIZE,
+            position_cap=POSITION_CAP,
             risk_aversion=RISK_AVERSION,
             holding_days=HOLDING_DAYS,
             cache_dir=CACHE_DIR,
