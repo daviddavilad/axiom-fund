@@ -81,8 +81,8 @@ def main() -> int:
         print()
         print("vs top-100 baseline (1.5% cap) for same 2020 window:")
         print(f"  Top-1000 0.5% cap:  {cum_return*100:+7.2f}% cum, {df['realized_return'].std()*100:.4f}% monthly std")
-        print(f"  Top-1000 1.5% cap:  -11.13% cum, 4.1829% monthly std (previous run)")
-        print(f"  Top-100  1.5% cap:   -1.02% cum, 1.3829% monthly std (Phase 4 baseline)")
+        print("  Top-1000 1.5% cap:  -11.13% cum, 4.1829% monthly std (previous run)")
+        print("  Top-100  1.5% cap:   -1.02% cum, 1.3829% monthly std (Phase 4 baseline)")
 
         # Active positions diagnostic
         df['active'] = df['long_count'] + df['short_count']
@@ -93,7 +93,7 @@ def main() -> int:
               f"mean={df['active'].mean():.1f}, max={df['active'].max()}")
         print(f"  gross_per_active range: [{df['gross_per_active'].min():.5f}, "
               f"{df['gross_per_active'].max():.5f}]")
-        print(f"  (0.005 = per-name cap binding)")
+        print("  (0.005 = per-name cap binding)")
 
         # Net exposure / portfolio beta — should all be ~0
         max_abs_net = df["net_exposure"].abs().max()

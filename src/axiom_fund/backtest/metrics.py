@@ -255,7 +255,7 @@ def compute_return_moments(returns: pd.Series) -> ReturnMoments:
     return ReturnMoments(
         mean=float(returns.mean()),
         std=float(returns.std()),
-        skew=float(returns.skew()),  # type: ignore[arg-type]  
+        skew=float(returns.skew()),  # type: ignore[arg-type]
         kurtosis=float(returns.kurtosis()),  # type: ignore[arg-type]
     )
 
