@@ -72,7 +72,7 @@ FUNDAMENTAL_COLUMNS: tuple[str, ...] = (
     # Identifiers & links
     "permno", "gvkey", "tic", "cusip",
     # Anchoring dates
-    "datadate", "rdq", "fyearq",
+    "datadate", "rdq", "fyearq", "fqtr", "epspxq", "ajexq",
     # Income statement (quarterly)
     "revtq", "cogsq", "xsgaq", "oibdpq", "niq",
     # Balance sheet (quarterly)
@@ -234,7 +234,7 @@ class Fundamentals:
         fund_sql = f"""
             SELECT
                 f.gvkey, f.tic, f.cusip,
-                f.datadate, f.rdq, f.fyearq,
+                f.datadate, f.rdq, f.fyearq, f.fqtr, f.epspxq, f.ajexq,
                 f.revtq, f.cogsq, f.xsgaq, f.oibdpq, f.niq,
                 f.atq, f.ceqq, f.ltq, f.dlttq, f.cheq, f.cshoq,
                 f.capxy, f.oancfy,
