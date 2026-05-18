@@ -452,6 +452,7 @@ def _fetch_period_inputs(
     from axiom_fund.signals.idiosyncratic_volatility import (
         compute_idiosyncratic_volatility,
     )
+    from axiom_fund.signals.pead import compute_pead_signal
     from axiom_fund.signals.residual_momentum import compute_residual_momentum
 
     # Universe for this rebalance date
@@ -521,11 +522,34 @@ def _fetch_period_inputs(
         start_date=sig_lookback_start,
         end_date=rebalance_str,
     )
+    # PEAD needs ~2.5 years of history (8 quarter lookback + buffer for the
+    # trailing std calculation per name). Use a wider lookback than the
+    # other signals.
+    pead_lookback_start = (rebalance_date - pd.Timedelta(days=900)).strftime("%Y-%m-%d")
+    raw_pead_signal = compute_pead_signal(
+        fundamentals=fund_strategy,
+        start_date=pead_lookback_start,
+        end_date=rebalance_str,
+    )
+    # Adapt PEAD output to the alignment interface (rename sue → raw_signal)
+    raw_pead = raw_pead_signal[["permno", "date_filed", "sue"]].rename(
+        columns={"sue": "raw_signal"}
+    )
 
     aligned_gp = align_signal(raw_gp, universe_panel_today, [rebalance_str])
     aligned_ivol = align_signal(raw_ivol, universe_panel_today, [rebalance_str])
     aligned_resmom = align_signal(raw_resmom, universe_panel_today, [rebalance_str])
-    composite = compute_composite_alpha(aligned_gp, aligned_ivol, aligned_resmom)
+    # PEAD: forward-fill with 90-day max age (post-earnings drift window;
+    # Hirshleifer et al. 2021 finds drift persists up to ~60-90 days)
+    aligned_pead = align_signal(
+        raw_pead,
+        universe_panel_today,
+        [rebalance_str],
+        max_age_days=90,
+    )
+    composite = compute_composite_alpha(
+        aligned_gp, aligned_ivol, aligned_resmom, aligned_pead
+    )
     if len(composite) == 0:
         return None
 

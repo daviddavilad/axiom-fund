@@ -51,9 +51,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Final
 
-import numpy as np
 import pandas as pd
-
 
 # Required input columns from Fundamentals
 _REQUIRED_FUNDAMENTAL_COLUMNS: Final[set[str]] = {

@@ -52,7 +52,7 @@ def main() -> int:
     weights_new_df = pd.read_parquet(weights_file)
     print(f"Weights file shape: {weights_new_df.shape}")
     print(f"Weights file columns: {list(weights_new_df.columns)}")
-    print(f"Weights file head:")
+    print("Weights file head:")
     print(weights_new_df.head())
     print()
 

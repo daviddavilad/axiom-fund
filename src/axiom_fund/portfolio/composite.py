@@ -55,6 +55,7 @@ COMPOSITE_OUTPUT_COLUMNS: tuple[str, ...] = (
     "z_gp",
     "z_ivol",
     "z_resmom",
+    "z_pead",
     "n_signals",
     "composite_raw",
     "composite_z",
@@ -64,6 +65,7 @@ COMPOSITE_OUTPUT_COLUMNS: tuple[str, ...] = (
 _SIGN_GP: float = 1.0
 _SIGN_IVOL: float = -1.0
 _SIGN_RESMOM: float = 1.0
+_SIGN_PEAD: float = 1.0  # high SUE → long (positive surprise predicts positive drift)
 
 # Minimum non-NaN signals required to emit a composite
 _DEFAULT_MIN_SIGNALS: int = 2
@@ -73,43 +75,55 @@ def compute_composite_alpha(
     aligned_gp: pd.DataFrame,
     aligned_ivol: pd.DataFrame,
     aligned_resmom: pd.DataFrame,
+    aligned_pead: pd.DataFrame | None = None,
     min_signals: int = _DEFAULT_MIN_SIGNALS,
 ) -> pd.DataFrame:
-    """Combine three aligned signal panels into a composite alpha.
+    """Combine three or four aligned signal panels into a composite alpha.
 
     Parameters
     ----------
     aligned_gp, aligned_ivol, aligned_resmom : pd.DataFrame
         Output of `signals.alignment.align_signal()` for each signal.
         Each must contain at least 'date', 'permno', 'z_score' columns.
+    aligned_pead : pd.DataFrame or None, default None
+        Optional fourth signal (PEAD). When None, the composite uses
+        only the three core signals (backward-compatible). When present,
+        the composite is equal-weighted across all four signals on a
+        per-row basis, with missing signals tolerated up to min_signals.
     min_signals : int, default 2
         Minimum number of non-NaN signals required to emit a row.
-        Must be in {1, 2, 3}.
+        Must be in {1, 2, 3, 4}. When aligned_pead is None, the upper
+        bound is effectively 3.
 
     Returns
     -------
     pd.DataFrame
         Long-format composite panel with columns matching
-        COMPOSITE_OUTPUT_COLUMNS, sorted by (date, permno).
+        COMPOSITE_OUTPUT_COLUMNS, sorted by (date, permno). The z_pead
+        column is always present; values are NaN when aligned_pead is
+        None or when no PEAD data is available for that name.
 
     Raises
     ------
     ValueError
         If any input is missing required columns, or min_signals is
-        outside {1, 2, 3}.
+        outside {1, 2, 3, 4}.
     """
     # ------------------------------------------------------------------
     # Input validation
     # ------------------------------------------------------------------
-    if min_signals not in {1, 2, 3}:
-        raise ValueError(f"min_signals must be 1, 2, or 3, got {min_signals}")
+    if min_signals not in {1, 2, 3, 4}:
+        raise ValueError(f"min_signals must be 1, 2, 3, or 4, got {min_signals}")
 
     required = {"date", "permno", "z_score"}
-    for name, df in [
+    signal_panels: list[tuple[str, pd.DataFrame]] = [
         ("aligned_gp", aligned_gp),
         ("aligned_ivol", aligned_ivol),
         ("aligned_resmom", aligned_resmom),
-    ]:
+    ]
+    if aligned_pead is not None:
+        signal_panels.append(("aligned_pead", aligned_pead))
+    for name, df in signal_panels:
         if not required.issubset(df.columns):
             missing = required - set(df.columns)
             raise ValueError(f"{name} missing columns: {sorted(missing)}")
@@ -131,11 +145,25 @@ def compute_composite_alpha(
     for df in (gp, ivol, resmom):
         df["date"] = pd.to_datetime(df["date"]).astype("datetime64[ns]")
 
+    pead: pd.DataFrame | None = None
+    if aligned_pead is not None:
+        pead = aligned_pead[["date", "permno", "z_score"]].rename(
+            columns={"z_score": "z_pead"}
+        )
+        pead["z_pead"] = pead["z_pead"] * _SIGN_PEAD
+        pead["date"] = pd.to_datetime(pead["date"]).astype("datetime64[ns]")
+
     # ------------------------------------------------------------------
-    # Outer-merge all three on (date, permno)
+    # Outer-merge all on (date, permno)
     # ------------------------------------------------------------------
     merged = gp.merge(ivol, on=["date", "permno"], how="outer")
     merged = merged.merge(resmom, on=["date", "permno"], how="outer")
+    if pead is not None:
+        merged = merged.merge(pead, on=["date", "permno"], how="outer")
+    else:
+        # Ensure z_pead column exists (will be all NaN) so output schema
+        # stays consistent with COMPOSITE_OUTPUT_COLUMNS.
+        merged["z_pead"] = np.nan
 
     if len(merged) == 0:
         return pd.DataFrame(columns=list(COMPOSITE_OUTPUT_COLUMNS))
@@ -143,7 +171,13 @@ def compute_composite_alpha(
     # ------------------------------------------------------------------
     # Count available signals per row
     # ------------------------------------------------------------------
-    z_cols = ["z_gp", "z_ivol", "z_resmom"]
+    # Use all four z-columns when PEAD is provided; otherwise just three.
+    # When PEAD is absent, z_pead is all NaN so it contributes nothing
+    # to counts or means even if naively included — but we be explicit.
+    if aligned_pead is not None:
+        z_cols = ["z_gp", "z_ivol", "z_resmom", "z_pead"]
+    else:
+        z_cols = ["z_gp", "z_ivol", "z_resmom"]
     merged["n_signals"] = merged[z_cols].notna().sum(axis=1).astype("int64")
 
     # Drop rows below threshold

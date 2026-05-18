@@ -75,7 +75,6 @@ def main() -> int:
     print()
 
     # Summary stats
-    import pandas as pd
     import numpy as np
 
     gross = result["gross_return"]

@@ -50,7 +50,6 @@ from axiom_fund.backtest.costs import (
     estimate_cs_spread_rolling,
 )
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -238,7 +237,7 @@ def apply_costs_to_period(
     """
     # Union of all permnos involved in this trade
     all_permnos: list[int] = sorted(
-        set(int(p) for p in weights_old.index.union(weights_new.index))
+        {int(p) for p in weights_old.index.union(weights_new.index)}
     )
     if len(all_permnos) == 0:
         return NetReturnPeriod(

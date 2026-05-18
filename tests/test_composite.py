@@ -47,7 +47,7 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="min_signals"):
             compute_composite_alpha(gp, ivol, resmom, min_signals=0)
         with pytest.raises(ValueError, match="min_signals"):
-            compute_composite_alpha(gp, ivol, resmom, min_signals=4)
+            compute_composite_alpha(gp, ivol, resmom, min_signals=5)
 
     def test_missing_columns_in_gp_raises(self) -> None:
         bad = pd.DataFrame({"foo": [1]})

@@ -36,7 +36,7 @@ UNIVERSE_SIZE = 1000
 POSITION_CAP = 0.005  # 0.5% per name for top-1000 spec
 RISK_AVERSION = 1.0
 HOLDING_DAYS = 21
-CACHE_DIR = Path("data/cache/backtest_full_top1000")
+CACHE_DIR = Path("data/cache/backtest_full_top1000_4sig")
 
 
 def main() -> int:

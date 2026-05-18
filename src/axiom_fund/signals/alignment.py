@@ -45,6 +45,7 @@ def align_signal(
     universe_df: pd.DataFrame,
     rebalance_dates: list[date] | list[str] | pd.DatetimeIndex,
     winsorize_pct: float = 0.01,
+    max_age_days: int | None = None,
 ) -> pd.DataFrame:
     """Align a raw signal to rebalance dates, winsorize, and z-score.
 
@@ -66,6 +67,12 @@ def align_signal(
     winsorize_pct : float, default 0.01
         Cross-sectional winsorization fraction. 0.01 means clip at the
         1st and 99th percentile. Set to 0.0 to disable.
+    max_age_days : int or None, default None
+        Maximum age (in calendar days) for a raw signal to be eligible
+        for forward-fill into a rebalance date. None (default) means no
+        age limit — the most-recent prior signal is always used, no
+        matter how old. Used for event-driven signals like PEAD where
+        information decays beyond a known horizon (~60-90 days).
 
     Returns
     -------
@@ -152,6 +159,11 @@ def align_signal(
             (raw["permno"].isin(universe_permnos))
             & (raw["date_filed"] <= rebal_date)
         ]
+        if max_age_days is not None:
+            cutoff = rebal_date - pd.Timedelta(days=max_age_days)
+            candidate_signals = candidate_signals[
+                candidate_signals["date_filed"] >= cutoff
+            ]
 
         if len(candidate_signals) == 0:
             # No signal data yet — emit NaN for every PERMNO
