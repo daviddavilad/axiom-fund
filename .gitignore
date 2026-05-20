@@ -68,3 +68,7 @@ logs/
 # Reports output (regenerable; optional — comment out if you want to track)
 reports/figures/
 reports/tearsheets/
+
+# Private study materials (defense-of-choices doc, personal notes)
+docs/defense.md
+docs/notes/
