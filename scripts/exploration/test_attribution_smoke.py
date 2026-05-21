@@ -76,8 +76,7 @@ def main() -> int:
             print("ERROR: optimizer inputs unavailable")
             return 1
         cov_wide, betas_full, sector_map, holding_wide = inputs
-        cov_estimate = estimate_covariance(cov_wide)
-        print(f"  Cov matrix: {cov_estimate.matrix.shape}")
+        print(f"  Cov returns wide: {cov_wide.shape}")
         print(f"  Betas: {len(betas_full.dropna())} non-null")
         print(f"  Sectors: {len(sector_map.dropna())} non-null")
         print(f"  Holding rets: {holding_wide.shape}")
@@ -104,7 +103,7 @@ def main() -> int:
                 rebalance_date=rebalance_date,
                 signal_name=signal_name,
                 composite_panel=composite,
-                cov_estimate=cov_estimate,
+                cov_wide=cov_wide,
                 betas_for_engine=betas_full,
                 sectors_for_engine=sector_map,
                 hpr_for_engine=holding_wide,

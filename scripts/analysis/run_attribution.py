@@ -34,7 +34,6 @@ from axiom_fund.backtest.attribution import (
     rebuild_composite_for_date,
 )
 from axiom_fund.backtest.engine import _build_cache
-from axiom_fund.portfolio.covariance import estimate_covariance
 
 
 BACKTEST_DIR = Path("data/cache/backtest_full_top1000_4sig")
@@ -112,20 +111,26 @@ def main() -> int:
                 )
                 continue
             cov_wide, betas_full, sector_map, holding_wide = opt_inputs
-            cov_estimate = estimate_covariance(cov_wide)
 
             # Run each signal
             for signal_name in SIGNAL_SIGNS:
-                result = compute_single_signal_period(
-                    cache=cache,
-                    rebalance_date=rebal,
-                    signal_name=signal_name,
-                    composite_panel=composite,
-                    cov_estimate=cov_estimate,
-                    betas_for_engine=betas_full,
-                    sectors_for_engine=sector_map,
-                    hpr_for_engine=holding_wide,
-                )
+                try:
+                    result = compute_single_signal_period(
+                        cache=cache,
+                        rebalance_date=rebal,
+                        signal_name=signal_name,
+                        composite_panel=composite,
+                        cov_wide=cov_wide,
+                        betas_for_engine=betas_full,
+                        sectors_for_engine=sector_map,
+                        hpr_for_engine=holding_wide,
+                    )
+                except ValueError as e:
+                    logging.warning(
+                        "%s for %s: %s",
+                        rebal.strftime("%Y-%m-%d"), signal_name, str(e)[:120],
+                    )
+                    result = None
                 if result is None:
                     rows.append({
                         "rebalance_date": rebal,

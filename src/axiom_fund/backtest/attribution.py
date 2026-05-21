@@ -268,7 +268,7 @@ def compute_single_signal_period(
     rebalance_date: pd.Timestamp,
     signal_name: str,
     composite_panel: pd.DataFrame,
-    cov_estimate,  # CovarianceEstimate result; passed in to avoid re-computing
+    cov_wide: pd.DataFrame,
     betas_for_engine: pd.Series,
     sectors_for_engine: pd.Series,
     hpr_for_engine: pd.DataFrame,
@@ -303,7 +303,7 @@ def compute_single_signal_period(
     # Intersect with covariance / betas / sectors / holding returns universes
     common = sorted(
         set(alpha.index)
-        & set(cov_estimate.matrix.index)
+        & set(cov_wide.columns)
         & set(betas_for_engine.dropna().index)
         & set(sectors_for_engine.dropna().index)
         & set(hpr_for_engine.columns)
@@ -312,7 +312,12 @@ def compute_single_signal_period(
         return None
 
     alpha = alpha.loc[common]
-    cov_filtered = cov_estimate.matrix.loc[common, common]
+    # Estimate covariance on this signal's universe, mirroring engine pattern.
+    # Calling estimate_covariance on the full unfiltered cov_wide can fail
+    # with sparse data; the filtered subset is the engine's approach.
+    cov_filtered_returns = cov_wide.loc[:, common]
+    cov_estimate_signal = estimate_covariance(cov_filtered_returns)
+    cov_filtered = cov_estimate_signal.matrix.loc[common, common]
     betas_aligned = betas_for_engine.loc[common]
     sectors_aligned = sectors_for_engine.loc[common].astype(int)
     hpr_aligned = hpr_for_engine[common].copy()
