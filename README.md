@@ -18,6 +18,10 @@ Top-1000 U.S. equity universe, 2015-01 → 2024-11, monthly rebalance, 116 succe
 
 **The gross Sharpe of ~0.78 is a research artifact.** The net Sharpe range of 0.18–0.48 reflects realistic transaction costs (commission + Corwin-Schultz half-spread + sqrt impact + borrow). The lower bound assumes retail-grade execution (full half-spread per trade); the upper bound reflects a 50% execution improvement consistent with institutional VWAP/POV/midpoint algorithms.
 
+![Cumulative returns 2015-2024](./docs/exhibits/01_cumulative_returns.png)
+
+![Drawdown over time](./docs/exhibits/02_drawdown.png)
+
 The 3-signal and 4-signal Sharpes are statistically identical. Signal-correlation and IC analysis (`scripts/analysis/ic_analysis.py`) explain why: the original three signals are nearly orthogonal and already exploit their available diversification, while PEAD overlaps modestly with GP and ResMom (correlations ~0.2). See **Findings** below for the more interesting per-signal IC results.
 
 This repository contains a research prototype. **It is not a live fund**, and no figures produced by this code constitute evidence of alpha. See [`docs/limitations.md`](./docs/limitations.md) for the full pre-committed enumeration of known methodological limitations.
@@ -47,9 +51,13 @@ A 116-period IC analysis across the four signals (Spearman rank correlation vs 2
 | z_pead    | 0.0209  | 0.084  | 2.67   | 0.0086  | 63.8%    |
 | z_resmom  | 0.0029  | 0.119  | 0.26   | 0.797   | 52.6%    |
 
+![IC per signal with 95% CI](./docs/exhibits/04_ic_per_signal.png)
+
 Three of the four signals are statistically positive at the 5% level. **PEAD has the smallest mean IC but the strongest t-stat** — its low magnitude is offset by remarkable consistency (lowest std IC, highest hit rate). Residual momentum has effectively zero predictive power over this 9.8-year window (t=0.26, p=0.80), consistent with the post-publication factor decay documented in McLean-Pontiff (2016) and Asness-Frazzini (2013).
 
 Splitting periods into bull regimes (92 periods) versus bear regimes (24 periods) sharpens the picture further: three of the four signals exhibit positive IC in bull markets and zero-or-negative IC in bear markets. IVol exhibits the classic low-vol anomaly cyclicality (t = +3.83 in bull, -2.47 in bear). PEAD shows a milder version of the same pattern. **The gross Sharpe of 0.78 is primarily delivered by bull-regime exposure**; a more sophisticated production system would require regime detection.
+
+![IC by regime: bull vs bear](./docs/exhibits/05_ic_bull_vs_bear.png)
 
 Average pairwise correlation across periods:
 
@@ -149,6 +157,9 @@ A few important ones, in addition to those in [`docs/limitations.md`](./docs/lim
 
 - **PEAD uses time-series SUE rather than analyst-based SUE**, because the WRDS subscription available to me does not include IBES. Livnat-Mendenhall (2006) suggests analyst-based SUE delivers roughly 30% higher IC; if this strategy were deployed under a subscription with IBES access, the PEAD signal would likely be measurably stronger.
 - **Transaction cost model is conservative** — full half-spread per trade, Corwin-Schultz (which is known to overshoot for illiquid names by 5–15%). Realistic institutional execution would capture some of this back, producing net Sharpe in the 0.30–0.50 range.
+
+![Cost sensitivity: gross vs net under different execution assumptions](./docs/exhibits/07_cost_sensitivity.png)
+
 - **9.8 years is a short backtest window for factor research.** The IC t-statistics above are computed on 116 monthly observations; the literature typically uses 50+ years of data. Findings here are suggestive of in-sample patterns, not definitive about long-run signal quality.
 - **No regime detection.** The signals reverse in bear regimes (especially IVol). A deployable production system would gate exposure by a market-regime indicator, or weight signals by trailing-window IC.
 

@@ -72,3 +72,7 @@ reports/tearsheets/
 # Private study materials (defense-of-choices doc, personal notes)
 docs/defense.md
 docs/notes/
+# R session history (not relevant to this Python project)
+.Rhistory
+.RData
+.Rproj.user/
