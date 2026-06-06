@@ -427,6 +427,7 @@ def _fetch_period_inputs(
     cov_window_days: int = 252,
     beta_window_days: int = 252,
     beta_min_obs: int = 60,
+    signals: list[str] | None = None,
 ) -> BacktestPeriodInputs | None:
     """Build a BacktestPeriodInputs for one rebalance date by slicing the cache.
 
@@ -500,52 +501,79 @@ def _fetch_period_inputs(
     rebalance_str = rebalance_date.strftime("%Y-%m-%d")
 
     # ------------------------------------------------------------------
+    # Resolve which signals to compute
+    # ------------------------------------------------------------------
+    # signals=None means all 4 signals (backwards-compatible default).
+    # A list like ["gp", "ivol", "pead"] runs the strategy without ResMom.
+    if signals is None:
+        active_signals = {"gp", "ivol", "resmom", "pead"}
+    else:
+        active_signals = set(signals)
+
+    # ------------------------------------------------------------------
     # Compute signals
     # ------------------------------------------------------------------
     # Each signal needs an explicit start_date that respects its lookback
     sig_lookback_start = (rebalance_date - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
 
-    raw_gp = compute_gross_profitability(
-        fundamentals_df=fund_strategy,
-        start_date=sig_lookback_start,
-        end_date=rebalance_str,
-    )
-    raw_ivol = compute_idiosyncratic_volatility(
-        returns_df=rets_strategy,
-        ff_factors_df=ff_strategy,
-        start_date=sig_lookback_start,
-        end_date=rebalance_str,
-    )
-    raw_resmom = compute_residual_momentum(
-        returns_df=rets_strategy,
-        fundamentals_df=fund_strategy,
-        start_date=sig_lookback_start,
-        end_date=rebalance_str,
-    )
-    # PEAD needs ~2.5 years of history (8 quarter lookback + buffer for the
-    # trailing std calculation per name). Use a wider lookback than the
-    # other signals.
-    pead_lookback_start = (rebalance_date - pd.Timedelta(days=900)).strftime("%Y-%m-%d")
-    raw_pead_signal = compute_pead_signal(
-        fundamentals=fund_strategy,
-        start_date=pead_lookback_start,
-        end_date=rebalance_str,
-    )
-    # Adapt PEAD output to the alignment interface (rename sue → raw_signal)
-    raw_pead = raw_pead_signal[["permno", "date_filed", "sue"]].rename(
-        columns={"sue": "raw_signal"}
-    )
+    raw_gp = None
+    raw_ivol = None
+    raw_resmom = None
+    raw_pead = None
 
-    aligned_gp = align_signal(raw_gp, universe_panel_today, [rebalance_str])
-    aligned_ivol = align_signal(raw_ivol, universe_panel_today, [rebalance_str])
-    aligned_resmom = align_signal(raw_resmom, universe_panel_today, [rebalance_str])
-    # PEAD: forward-fill with 90-day max age (post-earnings drift window;
-    # Hirshleifer et al. 2021 finds drift persists up to ~60-90 days)
-    aligned_pead = align_signal(
-        raw_pead,
-        universe_panel_today,
-        [rebalance_str],
-        max_age_days=90,
+    if "gp" in active_signals:
+        raw_gp = compute_gross_profitability(
+            fundamentals_df=fund_strategy,
+            start_date=sig_lookback_start,
+            end_date=rebalance_str,
+        )
+    if "ivol" in active_signals:
+        raw_ivol = compute_idiosyncratic_volatility(
+            returns_df=rets_strategy,
+            ff_factors_df=ff_strategy,
+            start_date=sig_lookback_start,
+            end_date=rebalance_str,
+        )
+    if "resmom" in active_signals:
+        raw_resmom = compute_residual_momentum(
+            returns_df=rets_strategy,
+            fundamentals_df=fund_strategy,
+            start_date=sig_lookback_start,
+            end_date=rebalance_str,
+        )
+    if "pead" in active_signals:
+        # PEAD needs ~2.5 years of history (8 quarter lookback + buffer for the
+        # trailing std calculation per name). Use a wider lookback.
+        pead_lookback_start = (
+            rebalance_date - pd.Timedelta(days=900)
+        ).strftime("%Y-%m-%d")
+        raw_pead_signal = compute_pead_signal(
+            fundamentals=fund_strategy,
+            start_date=pead_lookback_start,
+            end_date=rebalance_str,
+        )
+        # Adapt PEAD output to the alignment interface
+        raw_pead = raw_pead_signal[["permno", "date_filed", "sue"]].rename(
+            columns={"sue": "raw_signal"}
+        )
+
+    aligned_gp = (
+        align_signal(raw_gp, universe_panel_today, [rebalance_str])
+        if raw_gp is not None else None
+    )
+    aligned_ivol = (
+        align_signal(raw_ivol, universe_panel_today, [rebalance_str])
+        if raw_ivol is not None else None
+    )
+    aligned_resmom = (
+        align_signal(raw_resmom, universe_panel_today, [rebalance_str])
+        if raw_resmom is not None else None
+    )
+    # PEAD: forward-fill with 90-day max age (Hirshleifer et al. 2021 finds
+    # drift persists up to ~60-90 days)
+    aligned_pead = (
+        align_signal(raw_pead, universe_panel_today, [rebalance_str], max_age_days=90)
+        if raw_pead is not None else None
     )
     composite = compute_composite_alpha(
         aligned_gp, aligned_ivol, aligned_resmom, aligned_pead
@@ -681,6 +709,7 @@ def run_historical_backtest(
     constrain_sector_neutral: bool = True,
     holding_days: int = _DEFAULT_HOLDING_DAYS,
     cache_dir: Path | str | None = None,
+    signals: list[str] | None = None,
 ) -> pd.DataFrame:
     """Run a multi-period backtest from start_date to end_date.
 
@@ -694,6 +723,11 @@ def run_historical_backtest(
     cache_dir : Optional directory to checkpoint per-period results.
         If provided, each period's result is saved as Parquet immediately
         after the period runs.
+    signals : Optional list of signal names to include in the composite.
+        Valid: any subset of {"gp", "ivol", "resmom", "pead"} that
+        contains both gp and ivol and has at least 2 distinct entries.
+        Default None means all four signals (backwards-compatible).
+        Example: signals=["gp", "ivol", "pead"] runs the no-ResMom variant.
 
     Returns
     -------
@@ -703,6 +737,30 @@ def run_historical_backtest(
         portfolio_beta, optimizer_status. Skipped periods are NOT in the
         result; check logs for details.
     """
+    # ------------------------------------------------------------------
+    # Validate signals
+    # ------------------------------------------------------------------
+    _ALLOWED_SIGNALS = {"gp", "ivol", "resmom", "pead"}
+    _REQUIRED_SIGNALS = {"gp", "ivol"}  # composite needs at minimum these two
+    if signals is not None:
+        invalid = set(signals) - _ALLOWED_SIGNALS
+        if invalid:
+            raise ValueError(
+                f"Unknown signal names: {sorted(invalid)}. "
+                f"Allowed: {sorted(_ALLOWED_SIGNALS)}"
+            )
+        if len(set(signals)) < 2:
+            raise ValueError(
+                f"signals list must contain at least 2 distinct signals, "
+                f"got {sorted(set(signals))}"
+            )
+        missing_required = _REQUIRED_SIGNALS - set(signals)
+        if missing_required:
+            raise ValueError(
+                f"signals list must include gp and ivol (composite_alpha "
+                f"requires these as anchors); missing: {sorted(missing_required)}"
+            )
+
     rebalance_dates = monthly_rebalance_dates(start_date, end_date)
     if len(rebalance_dates) == 0:
         raise ValueError(
@@ -744,7 +802,11 @@ def run_historical_backtest(
 
     for rdate in rebalance_dates:
         try:
-            inputs = _fetch_period_inputs(cache, rdate, holding_days=holding_days)
+            inputs = _fetch_period_inputs(
+                cache, rdate,
+                holding_days=holding_days,
+                signals=signals,
+            )
             if inputs is None:
                 _logger.warning(
                     "Skipping %s: insufficient data for inputs",

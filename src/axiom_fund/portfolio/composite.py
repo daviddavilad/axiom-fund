@@ -74,7 +74,7 @@ _DEFAULT_MIN_SIGNALS: int = 2
 def compute_composite_alpha(
     aligned_gp: pd.DataFrame,
     aligned_ivol: pd.DataFrame,
-    aligned_resmom: pd.DataFrame,
+    aligned_resmom: pd.DataFrame | None = None,
     aligned_pead: pd.DataFrame | None = None,
     min_signals: int = _DEFAULT_MIN_SIGNALS,
 ) -> pd.DataFrame:
@@ -82,9 +82,13 @@ def compute_composite_alpha(
 
     Parameters
     ----------
-    aligned_gp, aligned_ivol, aligned_resmom : pd.DataFrame
+    aligned_gp, aligned_ivol : pd.DataFrame
         Output of `signals.alignment.align_signal()` for each signal.
         Each must contain at least 'date', 'permno', 'z_score' columns.
+    aligned_resmom : pd.DataFrame or None, default None
+        Optional residual momentum signal. When None, the composite
+        is computed without ResMom — useful for variants that drop
+        signals empirically shown to have zero predictive power.
     aligned_pead : pd.DataFrame or None, default None
         Optional fourth signal (PEAD). When None, the composite uses
         only the three core signals (backward-compatible). When present,
@@ -119,8 +123,9 @@ def compute_composite_alpha(
     signal_panels: list[tuple[str, pd.DataFrame]] = [
         ("aligned_gp", aligned_gp),
         ("aligned_ivol", aligned_ivol),
-        ("aligned_resmom", aligned_resmom),
     ]
+    if aligned_resmom is not None:
+        signal_panels.append(("aligned_resmom", aligned_resmom))
     if aligned_pead is not None:
         signal_panels.append(("aligned_pead", aligned_pead))
     for name, df in signal_panels:
@@ -133,17 +138,20 @@ def compute_composite_alpha(
     # ------------------------------------------------------------------
     gp = aligned_gp[["date", "permno", "z_score"]].rename(columns={"z_score": "z_gp"})
     ivol = aligned_ivol[["date", "permno", "z_score"]].rename(columns={"z_score": "z_ivol"})
-    resmom = aligned_resmom[["date", "permno", "z_score"]].rename(columns={"z_score": "z_resmom"})
 
-    # Apply sign conventions
+    # Apply sign conventions and normalize dates for the always-present signals
     gp["z_gp"] = gp["z_gp"] * _SIGN_GP
     ivol["z_ivol"] = ivol["z_ivol"] * _SIGN_IVOL
-    resmom["z_resmom"] = resmom["z_resmom"] * _SIGN_RESMOM
-
-    # Normalize date dtype across all three (real WRDS data may have
-    # mixed precisions; same defensive pattern as in alignment.py)
-    for df in (gp, ivol, resmom):
+    for df in (gp, ivol):
         df["date"] = pd.to_datetime(df["date"]).astype("datetime64[ns]")
+
+    resmom: pd.DataFrame | None = None
+    if aligned_resmom is not None:
+        resmom = aligned_resmom[["date", "permno", "z_score"]].rename(
+            columns={"z_score": "z_resmom"}
+        )
+        resmom["z_resmom"] = resmom["z_resmom"] * _SIGN_RESMOM
+        resmom["date"] = pd.to_datetime(resmom["date"]).astype("datetime64[ns]")
 
     pead: pd.DataFrame | None = None
     if aligned_pead is not None:
@@ -157,7 +165,12 @@ def compute_composite_alpha(
     # Outer-merge all on (date, permno)
     # ------------------------------------------------------------------
     merged = gp.merge(ivol, on=["date", "permno"], how="outer")
-    merged = merged.merge(resmom, on=["date", "permno"], how="outer")
+    if resmom is not None:
+        merged = merged.merge(resmom, on=["date", "permno"], how="outer")
+    else:
+        # Ensure z_resmom column exists (will be all NaN) so output schema
+        # stays consistent with COMPOSITE_OUTPUT_COLUMNS.
+        merged["z_resmom"] = np.nan
     if pead is not None:
         merged = merged.merge(pead, on=["date", "permno"], how="outer")
     else:
@@ -174,10 +187,11 @@ def compute_composite_alpha(
     # Use all four z-columns when PEAD is provided; otherwise just three.
     # When PEAD is absent, z_pead is all NaN so it contributes nothing
     # to counts or means even if naively included — but we be explicit.
+    z_cols = ["z_gp", "z_ivol"]
+    if aligned_resmom is not None:
+        z_cols.append("z_resmom")
     if aligned_pead is not None:
-        z_cols = ["z_gp", "z_ivol", "z_resmom", "z_pead"]
-    else:
-        z_cols = ["z_gp", "z_ivol", "z_resmom"]
+        z_cols.append("z_pead")
     merged["n_signals"] = merged[z_cols].notna().sum(axis=1).astype("int64")
 
     # Drop rows below threshold

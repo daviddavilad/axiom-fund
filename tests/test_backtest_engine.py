@@ -369,3 +369,102 @@ class TestMathCorrectness:
         # All stocks have identical cumulative returns, so the dot
         # product with (dollar-neutral) weights is zero
         assert abs(result.realized_return) < 1e-10
+
+
+# ============================================================================
+# run_historical_backtest signal-list validation
+# ============================================================================
+
+
+class TestRunHistoricalBacktestSignals:
+    """Validation of the `signals` parameter on run_historical_backtest.
+
+    Tests confirm the engine raises before any WRDS or compute work
+    when invalid signal lists are passed. Uses db=None to ensure
+    validation runs before db is touched.
+    """
+
+    def test_unknown_signal_raises(self) -> None:
+        from axiom_fund.backtest.engine import run_historical_backtest
+        with pytest.raises(ValueError, match="Unknown signal names"):
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["gp", "foo"],
+            )
+
+    def test_missing_gp_raises(self) -> None:
+        from axiom_fund.backtest.engine import run_historical_backtest
+        with pytest.raises(ValueError, match="composite_alpha requires these"):
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["ivol", "resmom", "pead"],
+            )
+
+    def test_missing_ivol_raises(self) -> None:
+        from axiom_fund.backtest.engine import run_historical_backtest
+        with pytest.raises(ValueError, match="composite_alpha requires these"):
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["gp", "resmom", "pead"],
+            )
+
+    def test_single_signal_raises(self) -> None:
+        from axiom_fund.backtest.engine import run_historical_backtest
+        with pytest.raises(ValueError, match="at least 2 distinct signals"):
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["gp"],
+            )
+
+    def test_duplicate_signal_deduped_and_raises(self) -> None:
+        """signals=['gp', 'gp'] should be treated as 1 distinct signal."""
+        from axiom_fund.backtest.engine import run_historical_backtest
+        with pytest.raises(ValueError, match="at least 2 distinct signals"):
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["gp", "gp"],
+            )
+
+    def test_none_signals_passes_validation(self) -> None:
+        """signals=None should pass validation (backwards-compat default)."""
+        from axiom_fund.backtest.engine import run_historical_backtest
+        # db=None will crash later, but validation should pass
+        try:
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=None,
+            )
+        except ValueError as e:
+            if "signal" in str(e).lower():
+                pytest.fail(f"signals=None should not raise on signal validation: {e}")
+        except (AttributeError, TypeError):
+            # Expected — crashes later because db is None
+            pass
+
+    def test_valid_three_signal_no_resmom_passes_validation(self) -> None:
+        """The variant we actually want to run."""
+        from axiom_fund.backtest.engine import run_historical_backtest
+        try:
+            run_historical_backtest(
+                db=None,
+                start_date="2020-01-01",
+                end_date="2020-02-01",
+                signals=["gp", "ivol", "pead"],
+            )
+        except ValueError as e:
+            if "signal" in str(e).lower():
+                pytest.fail(f"valid signals raised unexpected error: {e}")
+        except (AttributeError, TypeError):
+            pass

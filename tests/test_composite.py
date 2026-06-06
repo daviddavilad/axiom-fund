@@ -274,3 +274,75 @@ class TestMultiDate:
         for _date, group in result.groupby("date"):
             assert abs(group["composite_z"].mean()) < 1e-10
             assert group["composite_z"].std() == pytest.approx(1.0, abs=1e-10)
+
+
+# ============================================================================
+# Variant cases: optional signals
+# ============================================================================
+
+
+class TestOptionalSignals:
+    """Tests for variant compositions where signals can be omitted.
+
+    The function signature was refactored to make aligned_resmom optional
+    (with default None) mirroring the existing aligned_pead optionality.
+    This enables empirical variants like 'GP + IVol + PEAD without ResMom'.
+    """
+
+    def test_three_signal_no_resmom_runs(self) -> None:
+        """Composite without ResMom: gp + ivol + pead, aligned_resmom=None."""
+        gp = _make_aligned([1, 2, 3], [1.0, 0.0, -1.0])
+        ivol = _make_aligned([1, 2, 3], [-0.5, 0.0, 0.5])  # flipped → +0.5, 0, -0.5
+        pead = _make_aligned([1, 2, 3], [0.5, 0.0, -0.5])
+        result = compute_composite_alpha(
+            gp, ivol, aligned_resmom=None, aligned_pead=pead,
+        )
+        assert len(result) == 3
+        assert "z_resmom" in result.columns
+        assert result["z_resmom"].isna().all()
+        # Composite raw for permno 1: (1.0 + 0.5 + 0.5) / 3 = 0.6667
+        assert result["composite_raw"].iloc[0] == pytest.approx(0.6667, abs=1e-3)
+
+    def test_two_signal_minimum(self) -> None:
+        """Composite with only gp + ivol, both ResMom and PEAD None."""
+        gp = _make_aligned([1, 2, 3], [2.0, 0.0, -2.0])
+        ivol = _make_aligned([1, 2, 3], [-1.0, 0.0, 1.0])  # flipped → +1, 0, -1
+        result = compute_composite_alpha(
+            gp, ivol, aligned_resmom=None, aligned_pead=None,
+        )
+        assert len(result) == 3
+        assert result["z_resmom"].isna().all()
+        assert result["z_pead"].isna().all()
+        # composite_raw for permno 1: (2.0 + 1.0) / 2 = 1.5
+        assert result["composite_raw"].iloc[0] == pytest.approx(1.5)
+
+    def test_four_signal_path_unchanged(self) -> None:
+        """Regression: passing all 4 signals positionally still works (backwards compat)."""
+        gp = _make_aligned([1, 2, 3], [1.0, 0.0, -1.0])
+        ivol = _make_aligned([1, 2, 3], [-0.5, 0.0, 0.5])
+        resmom = _make_aligned([1, 2, 3], [0.5, 0.0, -0.5])
+        pead = _make_aligned([1, 2, 3], [0.3, 0.0, -0.3])
+        result = compute_composite_alpha(gp, ivol, resmom, pead)
+        assert len(result) == 3
+        assert not result["z_resmom"].isna().any()
+        assert not result["z_pead"].isna().any()
+
+    def test_no_resmom_versus_with_resmom_differs(self) -> None:
+        """Variant should produce DIFFERENT composite than the full 4-signal version.
+
+        Sanity check: the variant logic actually changes the output.
+        """
+        gp = _make_aligned([1, 2, 3], [1.0, 0.0, -1.0])
+        ivol = _make_aligned([1, 2, 3], [-0.5, 0.0, 0.5])
+        resmom = _make_aligned([1, 2, 3], [3.0, 0.0, -3.0])  # large signal
+        pead = _make_aligned([1, 2, 3], [0.3, 0.0, -0.3])
+
+        no_resmom = compute_composite_alpha(
+            gp, ivol, aligned_resmom=None, aligned_pead=pead,
+        )
+        with_resmom = compute_composite_alpha(gp, ivol, resmom, pead)
+
+        # composite_raw should differ because resmom contributes meaningfully
+        assert no_resmom["composite_raw"].iloc[0] != pytest.approx(
+            with_resmom["composite_raw"].iloc[0]
+        )
