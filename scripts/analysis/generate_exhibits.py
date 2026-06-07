@@ -41,6 +41,7 @@ from axiom_fund.backtest.exhibits import (
 
 BACKTEST_3SIG = Path("data/cache/backtest_full_top1000")
 BACKTEST_4SIG = Path("data/cache/backtest_full_top1000_4sig")
+BACKTEST_NO_RESMOM = Path("data/cache/backtest_full_top1000_no_resmom")
 IC_DIR = Path("data/cache/ic_analysis_4sig")
 EXHIBITS_DIR = Path("docs/exhibits")
 
@@ -66,6 +67,13 @@ def _load_3sig_summary() -> pd.DataFrame:
 
 def _load_4sig_summary() -> pd.DataFrame:
     df = pd.read_parquet(BACKTEST_4SIG / "backtest_summary.parquet")
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+    return df.sort_index()
+
+
+def _load_no_resmom_summary() -> pd.DataFrame:
+    df = pd.read_parquet(BACKTEST_NO_RESMOM / "backtest_summary.parquet")
     if not isinstance(df.index, pd.DatetimeIndex):
         df.index = pd.to_datetime(df.index)
     return df.sort_index()
@@ -344,6 +352,41 @@ def chart_07_cost_sensitivity() -> Path:
 
 
 # ----------------------------------------------------------------------
+# Chart 8: three-variant comparison (3-sig, 4-sig, no-ResMom)
+# ----------------------------------------------------------------------
+
+def chart_08_variant_comparison() -> Path:
+    s3 = _load_3sig_summary()
+    s4 = _load_4sig_summary()
+    s_nrm = _load_no_resmom_summary()
+
+    cum_3 = (1.0 + s3["realized_return"]).cumprod()
+    cum_4 = (1.0 + s4["realized_return"]).cumprod()
+    cum_nrm = (1.0 + s_nrm["realized_return"]).cumprod()
+
+    final_3 = (cum_3.iloc[-1] - 1.0) * 100.0
+    final_4 = (cum_4.iloc[-1] - 1.0) * 100.0
+    final_nrm = (cum_nrm.iloc[-1] - 1.0) * 100.0
+
+    fig, ax = plt.subplots()
+    ax.plot(cum_3.index, (cum_3 - 1.0) * 100.0,
+            label=f"3-signal: GP+IVol+ResMom  (+{final_3:.1f}%, Sharpe 0.79)",
+            color=COLOR_GROSS_3SIG, linewidth=1.8)
+    ax.plot(cum_4.index, (cum_4 - 1.0) * 100.0,
+            label=f"4-signal: + PEAD  (+{final_4:.1f}%, Sharpe 0.78)",
+            color=COLOR_GROSS_4SIG, linewidth=1.8, linestyle="--")
+    ax.plot(cum_nrm.index, (cum_nrm - 1.0) * 100.0,
+            label=f"No-ResMom: GP+IVol+PEAD  (+{final_nrm:.1f}%, Sharpe 0.82)",
+            color=COLOR_DRAWDOWN, linewidth=1.8)
+    ax.axhline(0, color="black", linewidth=0.6, alpha=0.4)
+    ax.set_title("Cumulative Returns — Three Composite Variants")
+    ax.set_xlabel("Rebalance date")
+    ax.set_ylabel("Cumulative return (%)")
+    ax.legend(loc="upper left")
+    return save_figure(fig, EXHIBITS_DIR, "08_variant_comparison")
+
+
+# ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
 
@@ -360,6 +403,7 @@ def main() -> int:
         ("05_ic_bull_vs_bear", chart_05_ic_bull_vs_bear),
         ("06_yearly_returns", chart_06_yearly_returns_with_cost),
         ("07_cost_sensitivity", chart_07_cost_sensitivity),
+        ("08_variant_comparison", chart_08_variant_comparison),
     ]
     for name, fn in charts:
         path = fn()

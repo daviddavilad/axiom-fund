@@ -6,15 +6,16 @@
 
 Top-1000 U.S. equity universe, 2015-01 → 2024-11, monthly rebalance, 116 successful periods.
 
-|                     | 3-signal     | 4-signal (+PEAD) |
-|---------------------|--------------|------------------|
-| Gross Sharpe        | 0.79         | 0.78             |
-| Net Sharpe (conservative) | 0.18    | similar          |
-| Net Sharpe (50% execution improvement) | 0.48 | similar |
-| Cumulative gross    | +68.3%       | +65.9%           |
-| Cumulative net      | +10.7%       | similar          |
-| Max drawdown (gross)| -14.5%       | -15.1%           |
-| Hit rate (gross)    | 57.8%        | 58.6%            |
+|                     | 3-signal     | 4-signal (+PEAD) | No-ResMom (GP+IVol+PEAD) |
+|---------------------|--------------|------------------|--------------------------|
+| Gross Sharpe        | 0.79         | 0.78             | **0.82**                 |
+| Net Sharpe (conservative) | 0.18    | similar          | -                        |
+| Net Sharpe (50% execution improvement) | 0.48 | similar | -                  |
+| Cumulative gross    | +68.3%       | +65.9%           | +64.8%                   |
+| Cumulative net      | +10.7%       | similar          | -                        |
+| Max drawdown (gross)| -14.5%       | -15.1%           | **-20.5%**               |
+| Hit rate (gross)    | 57.8%        | 58.6%            | **64.7%**                |
+| Annualized gross vol| 7.18%        | 7.05%            | **6.61%**                |
 
 **The gross Sharpe of ~0.78 is a research artifact.** The net Sharpe range of 0.18–0.48 reflects realistic transaction costs (commission + Corwin-Schultz half-spread + sqrt impact + borrow). The lower bound assumes retail-grade execution (full half-spread per trade); the upper bound reflects a 50% execution improvement consistent with institutional VWAP/POV/midpoint algorithms.
 
@@ -22,7 +23,11 @@ Top-1000 U.S. equity universe, 2015-01 → 2024-11, monthly rebalance, 116 succe
 
 ![Drawdown over time](./docs/exhibits/02_drawdown.png)
 
-The 3-signal and 4-signal Sharpes are statistically identical. Signal-correlation and IC analysis (`scripts/analysis/ic_analysis.py`) explain why: the original three signals are nearly orthogonal and already exploit their available diversification, while PEAD overlaps modestly with GP and ResMom (correlations ~0.2). See **Findings** below for the more interesting per-signal IC results.
+The 3-signal and 4-signal Sharpes are statistically identical. Signal-correlation and IC analysis (`scripts/analysis/ic_analysis.py`) explain why: the original three signals are nearly orthogonal and already exploit their available diversification, while PEAD overlaps modestly with GP and ResMom (correlations ~0.2).
+
+The **no-ResMom variant** drops Residual Momentum entirely (which the IC analysis below shows has zero predictive power in this window). The variant achieves a higher Sharpe (0.82 vs 0.79) and hit rate (65% vs 58%) on lower volatility, but its max drawdown widens by 6 percentage points — the year-by-year return spread grows from 30pp to 48pp, with the 2020 stress amplified (-17.6% vs -8.5%) and the 2021 recovery sharper (+30.1% vs +16.8%). ResMom acts as a **noise diluent**: by absorbing 25% of the composite weight at near-zero IC, it dampens *both* signal and noise from the other three signals. See [Findings](#findings) below.
+
+![Three-variant cumulative returns](./docs/exhibits/08_variant_comparison.png)
 
 This repository contains a research prototype. **It is not a live fund**, and no figures produced by this code constitute evidence of alpha. See [`docs/limitations.md`](./docs/limitations.md) for the full pre-committed enumeration of known methodological limitations.
 
@@ -69,6 +74,8 @@ Average pairwise correlation across periods:
 | z_resmom | 0.049  | -0.053 | 0.197  | 1.000    |
 
 The original three signals are nearly perfectly orthogonal (|corr| < 0.06 across all pairs of GP, IVol, ResMom). PEAD has consistent ~0.2 positive correlation with GP and ResMom, reflecting shared exposure to a "quality earnings" theme.
+
+The IC finding above — that ResMom has zero predictive power in this window — was validated empirically by re-running the backtest without ResMom (see [Current results](#current-results) above and `scripts/run_full_backtest_no_resmom.py`). Dropping ResMom raises Sharpe from 0.79 to 0.82 and hit rate from 58% to 65%, but worsens max drawdown from -14.5% to -20.5%. A zero-IC signal can still reduce tail risk when it absorbs composite weight that would otherwise concentrate on noisier signals — a methodological reminder that IC and risk are distinct measurements, not different views of the same quantity.
 
 ## Architecture
 
@@ -165,11 +172,16 @@ A few important ones, in addition to those in [`docs/limitations.md`](./docs/lim
 
 ## Status and roadmap
 
-Phase 5 complete. Currently in polish phase. Planned next:
+Phase 5 and Phase 6 complete. Currently in extension/polish phase. Phase 6 delivered:
 
-- **Phase 6**: factor attribution (decompose realized returns into signal contributions), 3-signal variant test (drop ResMom and re-run), readme with reproduced exhibits.
-- **Phase 7**: Form 4 insider-buying signal as an additional event-driven addition; news-sentiment signal as a longer-term goal.
-- **Phase 8**: scale-aware backtest (impact-dominated at $1B NAV vs negligible at NAV=1 — useful as a "what would this look like with real money" exhibit).
+- **Single-signal return attribution** (`scripts/analysis/run_attribution.py`) running each signal in isolation under the same neutrality + position-cap constraints as the composite. Headline: GP alone matches the 4-signal composite at Sharpe 0.80; IVol single-signal is *negative* at Sharpe -0.29 (driven by bear-regime reversal); PEAD delivers Sharpe 0.70. Reusable framework in `src/axiom_fund/backtest/attribution.py`.
+- **No-ResMom variant backtest** confirming the IC finding empirically. Sharpe 0.82 vs 0.79, hit rate 65% vs 58%, but max drawdown widens to -20.5%. Documented above; the variant infrastructure (`signals` parameter on `run_historical_backtest`) generalizes to future composites.
+
+Planned next:
+
+- **Phase 7**: Lazy Prices NLP signal (Cohen-Malloy-Nguyen 2020) — year-over-year cosine distance between 10-K Risk Factors and MD&A sections, computed with `sentence-transformers` locally to avoid API costs. Orthogonal to all 4 existing signals; hits the text channel.
+- **Phase 8**: Form 4 insider-buying signal — opportunistic vs routine classification per Cohen-Malloy-Pomorski (2012); free via SEC EDGAR. Behavioral channel.
+- **Phase 9**: scale-aware backtest (impact-dominated at $1B NAV vs negligible at NAV=1 — useful as a "what would this look like with real money" exhibit).
 
 ## References
 
