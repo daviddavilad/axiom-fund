@@ -1,0 +1,4 @@
+Run: 2026-06-09T17:55:56.759419
+Holdout cutoff: 2023-01-01
+Variants: 3
+Rows in metrics table: 8
