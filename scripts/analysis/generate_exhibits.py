@@ -387,6 +387,69 @@ def chart_08_variant_comparison() -> Path:
 
 
 # ----------------------------------------------------------------------
+# Chart 9: in-sample vs holdout split (boundary at 2022-12-31)
+# ----------------------------------------------------------------------
+
+def chart_09_in_sample_vs_holdout() -> Path:
+    """Cumulative returns with a vertical boundary at the holdout cutoff.
+
+    The boundary marks where in-sample (2015-2022, 94 periods) ends and
+    the partially-contaminated holdout window (2023-2024, 22 periods)
+    begins. The contamination is acknowledged in
+    docs/holdout_test_design.md.
+    """
+    import pandas as pd  # local import to keep top-level light
+
+    s3 = _load_3sig_summary()
+    s4 = _load_4sig_summary()
+    s_nrm = _load_no_resmom_summary()
+
+    cum_3 = (1.0 + s3["realized_return"]).cumprod()
+    cum_4 = (1.0 + s4["realized_return"]).cumprod()
+    cum_nrm = (1.0 + s_nrm["realized_return"]).cumprod()
+
+    fig, ax = plt.subplots()
+    ax.plot(cum_3.index, (cum_3 - 1.0) * 100.0,
+            label="3-signal: GP+IVol+ResMom",
+            color=COLOR_GROSS_3SIG, linewidth=1.8)
+    ax.plot(cum_4.index, (cum_4 - 1.0) * 100.0,
+            label="4-signal: + PEAD",
+            color=COLOR_GROSS_4SIG, linewidth=1.8, linestyle="--")
+    ax.plot(cum_nrm.index, (cum_nrm - 1.0) * 100.0,
+            label="No-ResMom: GP+IVol+PEAD",
+            color=COLOR_DRAWDOWN, linewidth=1.8)
+    ax.axhline(0, color="black", linewidth=0.6, alpha=0.4)
+
+    # Boundary marker at 2022-12-31
+    boundary = pd.Timestamp("2022-12-31")
+    ax.axvline(boundary, color="#666666", linewidth=1.5, linestyle=":",
+                alpha=0.85, label="Holdout boundary (2022-12-31)")
+
+    # Region shading for visual emphasis
+    y_min, y_max = ax.get_ylim()
+    ax.axvspan(
+        boundary, cum_3.index[-1],
+        alpha=0.08, color="#666666", zorder=0,
+    )
+
+    # Region annotations — placed near bottom to avoid the legend
+    y_min, _ = ax.get_ylim()
+    y_label = y_min + (y_max - y_min) * 0.03
+    ax.text(pd.Timestamp("2018-06-30"), y_label,
+            "← in-sample (94 periods)",
+            fontsize=10, color="#666666", ha="right", style="italic")
+    ax.text(pd.Timestamp("2023-09-30"), y_label,
+            "holdout (22 periods) →",
+            fontsize=10, color="#666666", ha="center", style="italic")
+
+    ax.set_title("Cumulative Returns: In-Sample vs Holdout Split")
+    ax.set_xlabel("Rebalance date")
+    ax.set_ylabel("Cumulative return (%)")
+    ax.legend(loc="upper left", framealpha=0.9)
+    return save_figure(fig, EXHIBITS_DIR, "09_in_sample_vs_holdout")
+
+
+# ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
 
@@ -404,6 +467,7 @@ def main() -> int:
         ("06_yearly_returns", chart_06_yearly_returns_with_cost),
         ("07_cost_sensitivity", chart_07_cost_sensitivity),
         ("08_variant_comparison", chart_08_variant_comparison),
+        ("09_in_sample_vs_holdout", chart_09_in_sample_vs_holdout),
     ]
     for name, fn in charts:
         path = fn()
