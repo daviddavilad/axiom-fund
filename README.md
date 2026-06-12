@@ -77,6 +77,19 @@ The original three signals are nearly perfectly orthogonal (|corr| < 0.06 across
 
 The IC finding above — that ResMom has zero predictive power in this window — was validated empirically by re-running the backtest without ResMom (see [Current results](#current-results) above and `scripts/run_full_backtest_no_resmom.py`). Dropping ResMom raises Sharpe from 0.79 to 0.82 and hit rate from 58% to 65%, but worsens max drawdown from -14.5% to -20.5%. A zero-IC signal can still reduce tail risk when it absorbs composite weight that would otherwise concentrate on noisier signals — a methodological reminder that IC and risk are distinct measurements, not different views of the same quantity.
 
+### Out-of-sample holdout test
+
+The 2023-2024 portion of the backtest had been seen during development (IC analysis, PEAD addition, no-ResMom variant). To extract meaningful OOS evidence anyway, two analyses were executed per a pre-commitment doc ([`docs/holdout_test_design.md`](./docs/holdout_test_design.md)) that locked the metrics and failure protocol *before* any holdout numbers were inspected:
+
+- **Analysis A**: strict OOS rerun of the 3-signal strategy (frozen pre-2023, PEAD excluded) on 2023-01 to 2024-11. 22 successful periods. Gross Sharpe **1.17**, 95% CI [0.64, 1.73]; net Sharpe **0.53**; max drawdown **-4.65%**; hit rate **59.1%**.
+- **Analysis B**: contamination-acknowledged split of the existing 116-period backtest at 2022-12-31. 3-signal holdout Sharpe **1.18**, 4-signal **1.44**, no-ResMom **1.77**. The latter two cannot be claimed OOS due to development contamination.
+
+All pre-committed thresholds met. Analysis A and B's 3-signal numbers cross-check to the rounding floor of cumulative compounding, confirming the backtest is deterministic and reproducible. Full writeup in [`docs/holdout_test_results.md`](./docs/holdout_test_results.md).
+
+![In-sample vs holdout split](./docs/exhibits/09_in_sample_vs_holdout.png)
+
+The honest one-sentence finding: *the strategy survives the holdout in pre-committed terms, but the window itself appears to have been regime-friendly* — max drawdowns under 5% across all variants, hit rates uniformly elevated, no 2020-style stress event. A robust OOS claim requires data containing a stress regime, which this window did not.
+
 ## Architecture
 
 Four layers, each a separately-testable Python module:
@@ -172,16 +185,31 @@ A few important ones, in addition to those in [`docs/limitations.md`](./docs/lim
 
 ## Status and roadmap
 
-Phase 5 and Phase 6 complete. Currently in extension/polish phase. Phase 6 delivered:
+Phases 5 through 7 (v1) complete. v1 release: June 2026. Phase 7 delivered:
 
 - **Single-signal return attribution** (`scripts/analysis/run_attribution.py`) running each signal in isolation under the same neutrality + position-cap constraints as the composite. Headline: GP alone matches the 4-signal composite at Sharpe 0.80; IVol single-signal is *negative* at Sharpe -0.29 (driven by bear-regime reversal); PEAD delivers Sharpe 0.70. Reusable framework in `src/axiom_fund/backtest/attribution.py`.
 - **No-ResMom variant backtest** confirming the IC finding empirically. Sharpe 0.82 vs 0.79, hit rate 65% vs 58%, but max drawdown widens to -20.5%. Documented above; the variant infrastructure (`signals` parameter on `run_historical_backtest`) generalizes to future composites.
+- **Holdout test** with pre-committed thresholds and failure protocol ([`docs/holdout_test_design.md`](./docs/holdout_test_design.md)). Two analyses, full writeup in [`docs/holdout_test_results.md`](./docs/holdout_test_results.md). All thresholds met; honest framing of the regime-friendly-window caveat.
 
-Planned next:
+### v2 (target: mid-September 2026)
 
-- **Phase 7**: Lazy Prices NLP signal (Cohen-Malloy-Nguyen 2020) — year-over-year cosine distance between 10-K Risk Factors and MD&A sections, computed with `sentence-transformers` locally to avoid API costs. Orthogonal to all 4 existing signals; hits the text channel.
-- **Phase 8**: Form 4 insider-buying signal — opportunistic vs routine classification per Cohen-Malloy-Pomorski (2012); free via SEC EDGAR. Behavioral channel.
-- **Phase 9**: scale-aware backtest (impact-dominated at $1B NAV vs negligible at NAV=1 — useful as a "what would this look like with real money" exhibit).
+Methodological upgrades to v1's statistical inference, liquidity treatment, and out-of-sample testing:
+
+- **Newey-West HAC standard errors** for all time-series inference (IC t-stats, Sharpe inference)
+- **Bootstrapped confidence intervals** for Sharpe ratios and IC estimates, replacing asymptotic approximations
+- **Residual diagnostics framework** for every regression in the codebase (Durbin-Watson, Q-Q plots, leverage)
+- **Tighter liquidity screens**: minimum dollar volume, maximum share of zero-volume days, addressing stale-price contamination
+- **Deflated Sharpe (Bailey & López de Prado 2014)** on variant comparison, correcting for multiple-testing selection bias
+- **Quandt-Andrews structural break test** applied to the IC time series, replacing the existing ad-hoc bull/bear regime classification with formal break-point detection
+- **Walk-forward IC weighting variant** as a research exercise on overfitting risk in signal-weight selection
+- **Simple regime overlay** with binary regime indicator gating gross exposure, directly addressing the holdout-was-easy caveat
+- **Lazy Prices NLP signal** (Cohen-Malloy-Nguyen 2020): year-over-year cosine distance between consecutive 10-K filings, computed locally via `sentence-transformers` from SEC EDGAR. The text channel.
+
+### v3 (target: 2027)
+
+- **Form 4 insider-buying signal** — opportunistic vs routine classification per Cohen-Malloy-Pomorski (2012); free via SEC EDGAR
+- **Scale-aware backtest** with realistic market-impact modeling at $1B NAV
+- **Extended backtest window** through 2008-2014 to include the GFC stress regime
 
 ## References
 
