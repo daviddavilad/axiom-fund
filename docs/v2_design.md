@@ -24,9 +24,9 @@ v2's scope responds to these gaps. v2 does not change the strategy itself — sa
 
 Nine work items, grouped into four phases.
 
-### Phase 1: Foundation (~20 hours)
+### Phase 1: Foundation (~15 hours, was ~20 hours)
 
-**Item 1 — Tighter liquidity screens.** Add minimum dollar volume threshold (default: $10M ADV vs v1's $5M), maximum share of zero-volume days in the trailing 60 days (default: 10%), and a stale-price detector flagging names with N+ consecutive zero-return days. Apply at universe construction time. Implementation: extend `src/axiom_fund/data/universe.py` with new filter parameters; default values configurable via a frozen dataclass. Backward-compatible: v1 backtests can still be reproduced by passing v1 thresholds.
+**Item 1 — Tighter liquidity screens.** ~~Add minimum dollar volume threshold, maximum share of zero-volume days, and a stale-price detector.~~ **Audited and not actionable** (audit committed in `scripts/analysis/liquidity_audit.py`). The v1 universe construction (top-1000 by market cap + 20-day ADV ≥ $5M) already eliminates stale-price contamination: maximum zero-volume share across 112,177 audited name-months is 1.67%; 99th percentile of consecutive zero-return runs is 1 day; candidate v2 screens would exclude 0-2 of 112,177 name-months. The original concern applies to small-cap or micro-cap universes, not to the top-1000 here. **Status**: closed; audit script preserved as methodology. Phase 1 reduces from 3 items to 2 items.
 
 **Item 2 — Residual diagnostics framework.** New module `src/axiom_fund/diagnostics/residual_diagnostics.py` exposing pure functions for: Q-Q plot data, residual-vs-fitted plot data, Durbin-Watson statistic, Breusch-Pagan heteroskedasticity test, Cook's distance, leverage. All return DataFrames or floats; plotting is downstream concern. Used by every regression in the codebase: residual momentum estimation, beta computation, OLS in the holdout cross-check.
 
@@ -88,7 +88,7 @@ If during implementation any of the above feels tempting, the doc says: not in v
 
 Strictly sequential, no parallel work. Each phase's outputs feed the next.
 
-1. **Phase 1: Foundation** (~20 hours). Liquidity screens → diagnostics framework → HAC/bootstrap utilities. Order within phase: tighter liquidity screens first (changes universe definition that everything else uses); diagnostics second (depends on regressions that exist); HAC/bootstrap third (composable building block applied throughout subsequent phases).
+1. **Phase 1: Foundation** (~15 hours, was ~20). ~~Liquidity screens →~~ diagnostics framework → HAC/bootstrap utilities. Item 1 closed by audit (see scope section). Order within phase: diagnostics first (applies to existing regressions); HAC/bootstrap second (composable building block applied throughout subsequent phases).
 
 2. **Phase 2: Rigorous reporting** (~9 hours). Deflated Sharpe → Quandt-Andrews. Applied to existing v1 results plus v2's new outputs.
 
@@ -102,11 +102,7 @@ Strictly sequential, no parallel work. Each phase's outputs feed the next.
 
 Each item has explicit acceptance criteria. "Done" means all criteria met, not "mostly done."
 
-**Item 1 (liquidity screens):**
-- New parameters added to universe construction (min_adv, max_zero_volume_share, max_consecutive_zero_days)
-- v1 backward-compatibility: passing v1 thresholds reproduces v1 universe size to within ±2%
-- Unit tests added (≥4 tests covering each parameter)
-- Re-running the 3-signal backtest with v2 default screens produces results documented in v2 README
+**Item 1 (liquidity screens):** Closed. Audit (commit `d69d670`, `scripts/analysis/liquidity_audit.py`) found no contamination in v1's universe; tighter screens would exclude 0-2 of 112,177 name-months. The audit script itself is the methodological contribution.
 
 **Item 2 (residual diagnostics):**
 - New module `src/axiom_fund/diagnostics/residual_diagnostics.py`
@@ -161,7 +157,7 @@ When v2 changes things (universe screens, statistical methodology), some v1 numb
 - All Sharpe estimates → HAC + bootstrapped CIs
 - All IC t-stats → HAC standard errors
 - All variant comparisons → with deflated Sharpe annotation
-- Backtest results affected by tighter liquidity screens (3-sig, 4-sig, no-ResMom)
+- New backtest variants from Phase 4 (walk-forward IC-weighted, regime overlay)
 
 **Leave as v1 artifacts** (kept in `data/cache/backtest_full_top1000_*/` unchanged):
 - Underlying parquet data for v1 backtests (regeneration would lose history; instead create new `_v2/` directories)
@@ -180,7 +176,7 @@ After running v2 analyses, I commit to the following reporting principles regard
 
 3. **Deflated Sharpe magnitude**: report the deflation amount. If it's small (which is likely with 3 variants), don't oversell its importance.
 
-4. **Liquidity screen impact**: if tighter liquidity screens *reduce* v2's backtest Sharpe vs v1's, report the new number and explain why (stale-price names were inflating v1's number).
+4. **Liquidity audit transparency**: the audit script and its findings (no contamination in v1 universe) are committed to the repo. v2 does NOT add tighter screens because they would be no-ops; report this honestly rather than adding cosmetic infrastructure.
 
 5. **Walk-forward IC weighting result**: if equal-weighted beats IC-weighted out-of-sample, report it. Do not bury.
 
@@ -194,7 +190,7 @@ After running v2 analyses, I commit to the following reporting principles regard
 
 | Week | Phase | Deliverable |
 |---|---|---|
-| W1 (Jun 12-18) | Phase 1 — Liquidity screens | universe.py upgrade + tests + v2 backtest |
+| W1 (Jun 12-18) | Phase 1 — Liquidity audit | audit committed, Item 1 closed as not actionable |
 | W2 (Jun 19-25) | Phase 1 — Diagnostics framework | residual_diagnostics.py module + applied to v1 regressions |
 | W3 (Jun 26 – Jul 2) | Phase 1 — Inference utilities | inference.py module + HAC applied throughout |
 | W4 (Jul 3-9) | Phase 2 | Deflated Sharpe + Quandt-Andrews |
