@@ -1,0 +1,4 @@
+Run: 2026-06-13T17:53:20.007202
+Trailing days: 60
+Rebalance dates: 116
+Total name-months audited: 112,177
