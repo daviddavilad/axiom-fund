@@ -28,7 +28,13 @@ Nine work items, grouped into four phases.
 
 **Item 1 — Tighter liquidity screens.** ~~Add minimum dollar volume threshold, maximum share of zero-volume days, and a stale-price detector.~~ **Audited and not actionable** (audit committed in `scripts/analysis/liquidity_audit.py`). The v1 universe construction (top-1000 by market cap + 20-day ADV ≥ $5M) already eliminates stale-price contamination: maximum zero-volume share across 112,177 audited name-months is 1.67%; 99th percentile of consecutive zero-return runs is 1 day; candidate v2 screens would exclude 0-2 of 112,177 name-months. The original concern applies to small-cap or micro-cap universes, not to the top-1000 here. **Status**: closed; audit script preserved as methodology. Phase 1 reduces from 3 items to 2 items.
 
-**Item 2 — Residual diagnostics framework.** New module `src/axiom_fund/diagnostics/residual_diagnostics.py` exposing pure functions for: Q-Q plot data, residual-vs-fitted plot data, Durbin-Watson statistic, Breusch-Pagan heteroskedasticity test, Cook's distance, leverage. All return DataFrames or floats; plotting is downstream concern. Used by every regression in the codebase: residual momentum estimation, beta computation, OLS in the holdout cross-check.
+**Item 2 — Residual diagnostics framework.** New module `src/axiom_fund/diagnostics/residual_diagnostics.py` exposing six pure functions: Q-Q plot data, residual-vs-fitted plot data, Durbin-Watson statistic, Breusch-Pagan heteroskedasticity test, Cook's distance, leverage. All take raw arrays (residuals, fitted values, design matrix) and return DataFrames or floats; plotting is a downstream concern. No coupling to statsmodels or any specific regression library.
+
+Applied to v1's two regression sites:
+- **Residual momentum** (`src/axiom_fund/signals/residual_momentum.py`): cross-sectional regression per month, ~116 regressions. Applicable diagnostics: Q-Q, residual-vs-fitted, Breusch-Pagan, Cook's distance, leverage. Durbin-Watson is *not* applied here because it tests time-series autocorrelation, which is undefined for cross-sectional residuals.
+- **Idiosyncratic volatility** (`src/axiom_fund/signals/idiosyncratic_volatility.py`): FF3 trailing-60-day regression per (permno, date), tens of thousands of regressions across the backtest. Durbin-Watson applied across all regressions, reported as an aggregate distribution.
+
+Beta estimation (`_ols_beta` in `src/axiom_fund/portfolio/betas.py`) uses the closed-form Cov(r,m)/Var(m) formula, not a full regression. No residuals exist, so diagnostics do not apply.
 
 **Item 3 — HAC standard errors and bootstrapped CIs.** New module `src/axiom_fund/diagnostics/inference.py` exposing `compute_hac_standard_errors()` (statsmodels wrapper with maxlags parameter) and `compute_bootstrapped_sharpe_ci()` (block bootstrap, configurable block size and number of resamples). Used wherever v1 currently reports asymptotic standard errors.
 
@@ -107,8 +113,11 @@ Each item has explicit acceptance criteria. "Done" means all criteria met, not "
 **Item 2 (residual diagnostics):**
 - New module `src/axiom_fund/diagnostics/residual_diagnostics.py`
 - 6 pure functions exposed (Q-Q data, residual-vs-fitted data, DW, Breusch-Pagan, Cook's, leverage)
+- Function contract: takes raw arrays (residuals, fitted, design matrix) and returns DataFrames or floats; no coupling to statsmodels
 - Unit tests added (≥10 tests covering edge cases)
-- Applied to residual momentum estimation in v1; report any findings (heteroskedasticity, outliers)
+- Applied to residual momentum estimation in v1 (cross-sectional, 5 of 6 diagnostics excluding DW)
+- Applied to idiosyncratic volatility in v1 (FF3 trailing-60-day per regression, aggregate DW distribution across all regressions)
+- Findings reported in `docs/v2_diagnostics_findings.md` (new file): heteroskedasticity, outliers, autocorrelation if any
 
 **Item 3 (HAC + bootstrap):**
 - New module `src/axiom_fund/diagnostics/inference.py`
