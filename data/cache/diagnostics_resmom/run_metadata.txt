@@ -1,0 +1,4 @@
+Run: 2026-06-18T20:02:49.119401
+Window: 2014-12-01 → 2024-12-31
+Months analyzed: 121
+Total observations: 174,450
