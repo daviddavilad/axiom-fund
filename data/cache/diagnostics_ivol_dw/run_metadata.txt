@@ -1,0 +1,6 @@
+Run: 2026-06-19T23:09:36.105643
+Window: 2014-10-01 → 2024-12-31
+Permnos: 1,900
+Month-ends: 120
+Regressions: 203,833
+Trailing window per regression: 60 trading days
