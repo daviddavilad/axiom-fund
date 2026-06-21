@@ -195,11 +195,11 @@ Phases 5 through 7 (v1) complete. v1 release: June 2026. Phase 7 delivered:
 
 Methodological upgrades to v1's statistical inference, liquidity treatment, and out-of-sample testing. Progress tracked in [`docs/v2_design.md`](./docs/v2_design.md).
 
-**Phase 1 (foundation) — in progress:**
+**Phase 1 (foundation) — complete:**
 
 - **Item 1 — Liquidity audit (closed).** Audit (`scripts/analysis/liquidity_audit.py`) found v1's existing top-1000 + $5M ADV construction already eliminates stale-price contamination. Candidate tighter screens would exclude 0-2 of 112,177 name-months. Cosmetic no-op infrastructure not added; finding reported honestly.
 - **Item 2 — Residual diagnostics framework (closed).** Six pure functions in [`src/axiom_fund/diagnostics/residual_diagnostics.py`](./src/axiom_fund/diagnostics/residual_diagnostics.py); 30 unit tests; applied to both ResMom (cross-sectional, 121 months) and IVol (FF3 trailing-60-day, 203,833 regressions). Findings in [`docs/v2_diagnostics_findings.md`](./docs/v2_diagnostics_findings.md): ResMom is heteroskedastic in 86% of months at p<0.01 with extreme residual kurtosis (max 931, with GameStop in January 2021 producing the largest standardized residual at 34σ); IVol residuals are clean (DW distribution centered at 2.034, no systematic autocorrelation).
-- **Item 3 — Newey-West HAC standard errors and bootstrapped CIs.** Next.
+- **Item 3 — HAC standard errors and bootstrapped CIs (closed).** Newey-West HAC and stationary block-bootstrap implementations in [`src/axiom_fund/diagnostics/inference.py`](./src/axiom_fund/diagnostics/inference.py); 24 unit tests; applied to v1's existing IC t-stats and Sharpe CIs ([`scripts/analysis/apply_inference_v2.py`](./scripts/analysis/apply_inference_v2.py)). Findings: HAC corrections on IC t-stats are 2-10% (largest for IVol at 10%, methodologically expected from its rolling-window construction); bootstrap Sharpe CIs are 11-13% wider than asymptotic. None of v1's qualitative conclusions overturned; the most fragile result is IVol's apparent significance (HAC L=5 t = 2.09, barely clears t > 2.0).
 
 **Phase 2 onward — planned:**
 
