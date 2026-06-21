@@ -1,0 +1,8 @@
+Run: 2026-06-21T16:21:08.623894
+HAC lags tested: [3, 5]
+Bootstrap block_size: 6
+Bootstrap n_resamples: 10000
+Annualization factor: 12
+Seed: 42
+IC source: data/cache/ic_analysis_4sig/ic_long.parquet
+Returns source: data/cache/backtest_full_top1000/net_returns.parquet

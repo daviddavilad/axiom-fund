@@ -106,11 +106,70 @@ The diagnostics distinguish two questions that the v2 design did not separate cl
 
 What is biased, separately from both points above, is the **inference about the signal's quality** — IC t-statistics, Sharpe confidence intervals, and any claim that requires homoskedastic or normal residuals to be statistically valid. That is what v2 Item 3 addresses.
 
+## Item 3: HAC + bootstrap applied
+
+The Item 2 findings (heteroskedastic ResMom residuals, non-normal residual distributions across both regressions) motivated the v2 Item 3 inference tools shipped in commit `e310e3d`: HAC standard errors and stationary block-bootstrapped Sharpe confidence intervals. This section applies those tools to v1's reported statistics and reports what changes.
+
+Methodology choices, documented in code for reproducibility:
+- HAC lag truncation L = 3 and L = 5 (spans Andrews/Newey rule of thumb at N = 116 monthly periods)
+- Block bootstrap: block_size = 6 (approximately N^(1/3) for monthly), n_resamples = 10,000, percentile method
+- Spearman IC used (matches v1's onepager convention)
+- Annualization factor √12 for Sharpe (monthly returns)
+
+Source data: `data/cache/ic_analysis_4sig/ic_long.parquet` (116 monthly Spearman ICs per signal) and `data/cache/backtest_full_top1000/net_returns.parquet` (116 monthly portfolio returns, gross and net). Script: `scripts/analysis/apply_inference_v2.py`.
+
+### IC t-stats under HAC correction
+
+| Signal | Mean IC | Naive t | HAC t (L=3) | HAC t (L=5) |
+|---|---|---|---|---|
+| GP | 0.0235 | 2.340 | 2.193 | 2.285 |
+| IVol | 0.0334 | 2.334 | 2.133 | 2.092 |
+| PEAD | 0.0209 | 2.672 | 2.699 | 2.584 |
+| ResMom | 0.0029 | 0.258 | 0.278 | 0.289 |
+
+The HAC correction reduces the naive t-stat by 2-10% for GP, IVol, and PEAD, and slightly inflates it for ResMom (where the underlying IC time series shows mild negative serial dependence — the correction technically goes the other way). The magnitude of the correction is largest for IVol, which is methodologically expected: IVol's signal is a rolling 60-day residual standard deviation, so consecutive month-end values share 59 of 60 daily inputs by construction. This induces persistence in the IVol cross-section and therefore in the per-month IC time series. PEAD's IC is essentially unchanged — its 21-day post-earnings window introduces less month-to-month persistence than the 60-day IVol window.
+
+The conclusion under HAC: **all four signals still fail the Harvey-Liu-Zhu (2016) t > 3.0 multiple-testing threshold.** This is the same conclusion v1 reached under naive inference, now confirmed under HAC. The HAC correction does not rescue any of v1's signals from the HLZ bar, but neither does it overturn any of them. The result is a corroboration of v1's existing claim that none of the four individual signals clears the strict multiple-testing threshold, which is why v1's defense rests on the composite.
+
+ResMom's HAC t-stat remains essentially zero. v1's existing no-ResMom variant analysis already demonstrated that ResMom contributes negligibly to composite Sharpe; the HAC IC analysis now confirms this from the signal-construction side as well.
+
+### Sharpe ratio confidence intervals under bootstrap
+
+Annualized Sharpe (× √12) and 95% confidence intervals:
+
+| Series | Sharpe | Asymptotic CI | Bootstrap CI | Width change |
+|---|---|---|---|---|
+| Gross | 0.787 | [0.148, 1.425] | [0.143, 1.586] | +13.0% |
+| Net | 0.181 | [-0.450, 0.811] | [-0.450, 0.957] | +11.5% |
+
+The block-bootstrap CIs are 11-13% wider than the asymptotic CIs. The lower bounds are essentially identical between methods; the bootstrap widens the upper bound. This is the heavy right-tail of returns showing up — bootstrap resamples that happen to include disproportionately many of the best months push the upper percentile out further than a Gaussian asymptotic would predict. The asymptotic CI assumes returns are i.i.d. normal; v1's monthly portfolio returns are neither.
+
+The **net Sharpe CI includes zero under both inference methods**. v1's reported net Sharpe of 0.18 is not statistically distinguishable from zero at conventional significance. This was already implicit in v1's onepager (which reported the wide CI), but the bootstrap formalization makes it explicit. Transaction costs (mean 31 bps round-trip across 116 rebalances) eat most of the gross signal; the remaining net return is consistent with sampling noise at this N.
+
+The gross Sharpe lower bound at 0.14 is comfortably above zero under both inference methods. The strategy's gross signal is statistically significant; what is not significant is the residual after costs.
+
+### Summary
+
+The v2 Item 3 inference confirms what v1's naive inference already suggested:
+1. No individual signal clears Harvey-Liu-Zhu's t > 3.0 multiple-testing threshold.
+2. The 4-signal composite's gross Sharpe is statistically distinguishable from zero but its net Sharpe is not.
+3. ResMom's marginal contribution remains negligible.
+
+None of v1's qualitative conclusions are overturned by the rigorous inference, but the picture is more nuanced than "nothing changed":
+
+- **IVol's apparent significance erodes meaningfully.** Naive t = 2.33 falls to HAC t = 2.09 at L = 5, a 10% drop. This is the largest correction among the four signals and is methodologically expected from IVol's rolling-window construction (consecutive month-end IVol values share 59 of 60 daily inputs by construction, inducing autocorrelation in the cross-section and therefore in the IC time series). The HAC-corrected t still narrowly clears the conventional t > 2.0 threshold but is closer to that boundary than the naive number suggests. Under any further correction — multiple testing, deflated Sharpe on the Sharpe side of the analysis, or a more aggressive L = 7 or 10 — IVol's apparent significance is the most fragile of the four signals.
+- **PEAD's t-stat is robust.** Naive 2.67 vs HAC L=3 2.70, L=5 2.58. The smallest IC autocorrelation; the most assumption-robust signal.
+- **Sharpe CIs widen by 12-13%, but the qualitative conclusions hold.** Gross Sharpe remains statistically positive; net Sharpe remains statistically indistinguishable from zero.
+
+The honest reading: v1's standard asymptotic inference was approximately correct on this dataset because the IC series autocorrelation happened to be modest. This is not a virtue of v1's methodology — it is a property of the underlying data. If the IC autocorrelation had been larger (which is possible at different sampling frequencies or with different signal-construction choices), v1's reported t-stats would have been more inflated relative to the truth. The Item 3 framework now insures against that risk for future iterations.
+
+The findings that *would* have qualitatively flipped a conclusion, and that did not occur: an IC t-stat that was significant under naive inference but failed under HAC, or a Sharpe CI that excluded zero under asymptotic inference but included zero under bootstrap. Neither happened on this dataset.
+
 ## Implications for v2
 
 These findings motivate the work items already in the v2 design doc:
 
-- **Item 3 (HAC standard errors + bootstrapped CIs)**: directly addresses the heteroskedasticity and non-normality findings in ResMom *for the purpose of statistical inference*. HAC handles heteroskedasticity by construction; bootstrap CIs do not assume normality. v1's reported IC t-statistics and Sharpe confidence intervals will be re-computed under HAC + bootstrap, and any that drop below significance will be reported honestly. Note: HAC and bootstrap *do not fix the underlying residual distribution*. The heavy tails and outlier-dominance properties of ResMom residuals persist; Item 3 only changes how we report uncertainty about statistics computed from those residuals, not the residuals themselves. Addressing the residual distribution itself (winsorization, robust regression, or restricting the signal's effective range) is out of v2 scope and is a candidate for v3.
+- **Item 3 (HAC standard errors + bootstrapped CIs) — closed.** Results documented in the section above. HAC corrections on IC t-stats are 2-10% in magnitude (largest for IVol); bootstrap CIs are 11-13% wider than asymptotic CIs. No qualitative conclusion from v1 was overturned; the most fragile result under further corrections is IVol's apparent significance. Note: HAC and bootstrap *do not fix the underlying residual distribution* identified in Item 2 — they only change how uncertainty is reported about statistics computed from those residuals. Addressing the residual distribution itself (winsorization, robust regression, or restricting the signal's effective range) is out of v2 scope and remains a v3 candidate.
 
 - **Item 5 (Quandt-Andrews structural break test)**: replaces the informal bull/bear regime classification with formal break-point detection on IC time series. Independent of the diagnostics findings above but consistent with the broader rigor agenda.
 
