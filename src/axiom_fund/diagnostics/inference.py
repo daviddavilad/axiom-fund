@@ -1,12 +1,15 @@
-"""HAC standard errors and bootstrapped confidence intervals.
+"""Inference tools: HAC SEs, bootstrap CIs, and deflated Sharpe.
 
-This module implements v2 Item 3 (per docs/v2_design.md): inference
-tools that do not require homoskedastic or normally-distributed
-residuals. Motivated by the v2 Item 2 findings (see
-docs/v2_diagnostics_findings.md) that v1's residuals exhibit
-heteroskedasticity and severe non-normality.
+This module implements v2 Items 3 and 4 (per docs/v2_design.md):
+inference tools that do not require homoskedastic or normally-
+distributed residuals (Item 3), and corrections for multiple-testing
+selection bias on Sharpe ratios (Item 4). Both motivated by the v2
+Item 2 findings (see docs/v2_diagnostics_findings.md) that v1's
+residuals exhibit heteroskedasticity and severe non-normality, and
+by the recognition that v1's reported Sharpe is the best among
+multiple variants and may suffer from selection bias.
 
-Functions:
+Functions (Item 3):
   - compute_hac_standard_errors: Newey-West HAC covariance matrix
     for OLS regression coefficients
   - compute_hac_standard_error_of_mean: scalar SE of a sample mean
@@ -14,10 +17,18 @@ Functions:
   - compute_bootstrapped_sharpe_ci: block-bootstrap confidence
     interval for the Sharpe ratio
 
+Functions (Item 4):
+  - compute_expected_max_sharpe: expected maximum Sharpe across N
+    trials under H_0 of zero true Sharpe (the SR* threshold)
+  - compute_deflated_sharpe: Bailey & López de Prado (2014)
+    probability that a reported Sharpe is not the product of
+    selection bias from multiple trials
+
 All functions take raw numpy arrays and return scalars or arrays.
 Pure numpy implementation; no statsmodels or other regression-library
-dependency. The HAC estimator is implemented directly from the
-Newey-West 1987 definition (Bartlett kernel, lag truncation L).
+dependency. HAC estimator implemented from Newey-West 1987 definition
+(Bartlett kernel, lag truncation L); DSR implemented from Bailey &
+López de Prado 2014 equations (16) and (17).
 
 Design notes:
   - maxlags is a required parameter on HAC functions; defaults hide
@@ -27,6 +38,9 @@ Design notes:
     judgment call. Common choice: block_size ~ N^(1/3) for monthly.
   - The bootstrap is a stationary block bootstrap (Politis-Romano
     1994) preserving short-range dependence in the return series.
+  - DSR requires skewness and excess kurtosis of the return series
+    as explicit inputs; the caller computes them. This keeps the
+    function decoupled from any particular sample.
 """
 
 from __future__ import annotations
@@ -253,3 +267,179 @@ def compute_bootstrapped_sharpe_ci(
     lower = float(np.quantile(valid, alpha))
     upper = float(np.quantile(valid, 1.0 - alpha))
     return lower, upper
+
+
+def compute_expected_max_sharpe(
+    sharpe_trials: NDArray[np.float64],
+) -> float:
+    """Expected maximum Sharpe ratio across N trials under the null.
+
+    Under the null hypothesis that all N strategies have a true
+    Sharpe of zero, the expected maximum observed Sharpe across the
+    N trials is:
+
+      E[max SR] = sqrt(Var(SR_trials)) * (
+          (1 - gamma) * Phi^{-1}(1 - 1/N) +
+          gamma       * Phi^{-1}(1 - 1/(N*e))
+      )
+
+    where:
+      - gamma ~ 0.5772 is the Euler-Mascheroni constant
+      - Phi^{-1} is the inverse standard normal CDF
+      - e is Euler's number
+      - Var(SR_trials) is the sample variance of Sharpe ratios
+        observed across the N trials
+
+    This is the "SR*" threshold from Bailey & López de Prado 2014
+    eq. (16). If a reported Sharpe is below this expected maximum,
+    it is statistically consistent with being the lucky best of N
+    trials all of which have zero true Sharpe.
+
+    Parameters
+    ----------
+    sharpe_trials : NDArray[np.float64]
+        1D array of N Sharpe ratios from the trials. Used to
+        estimate Var(SR_trials) and the trial count N. Each
+        trial's Sharpe should be on the same time scale (e.g., all
+        monthly, all annualized) as the candidate being deflated.
+
+        Interpretation note: the DSR null hypothesis is that all N
+        trials have zero true Sharpe. Under that null, the spread
+        of observed Sharpes across trials measures chance noise.
+        If the trials are heterogeneous strategies with genuinely
+        different true Sharpes (e.g., a momentum signal and an
+        unrelated mean-reversion signal), their dispersion reflects
+        real differences rather than noise, and DSR is misapplied.
+        The trials should be variants of a single hypothesis, not
+        independently-motivated strategies.
+
+    Returns
+    -------
+    float
+        The expected maximum Sharpe under the null, on the same
+        time scale as the input trials.
+
+    Raises
+    ------
+    ValueError
+        If sharpe_trials is not 1D, has fewer than 2 trials, or
+        has zero variance (all trials identical).
+    """
+    if sharpe_trials.ndim != 1:
+        raise ValueError(
+            f"sharpe_trials must be 1D, got shape {sharpe_trials.shape}"
+        )
+    n_trials = len(sharpe_trials)
+    if n_trials < 2:
+        raise ValueError(
+            f"need at least 2 trials to estimate variance, got {n_trials}"
+        )
+
+    var_sr = float(sharpe_trials.var(ddof=1))
+    if var_sr == 0:
+        raise ValueError(
+            "sharpe_trials has zero variance; expected max is undefined"
+        )
+
+    from scipy.stats import norm
+    gamma = 0.5772156649015329  # Euler-Mascheroni
+    e = np.e
+    z1 = norm.ppf(1.0 - 1.0 / n_trials)
+    z2 = norm.ppf(1.0 - 1.0 / (n_trials * e))
+    expected_max = float(np.sqrt(var_sr) * ((1.0 - gamma) * z1 + gamma * z2))
+    return expected_max
+
+
+def compute_deflated_sharpe(
+    sharpe_observed: float,
+    sharpe_trials: NDArray[np.float64],
+    n_obs: int,
+    skewness: float,
+    excess_kurtosis: float,
+) -> float:
+    """Bailey & López de Prado (2014) deflated Sharpe ratio probability.
+
+    Returns the probability that the observed Sharpe is not the
+    product of selection bias from running multiple trials. A high
+    DSR (e.g., > 0.95) indicates the Sharpe is unlikely to be a
+    spurious result; a low DSR (e.g., < 0.5) suggests selection
+    bias may explain the observed Sharpe.
+
+    Formula (Bailey & López de Prado 2014, eq. 17):
+
+      DSR = Phi(
+        (SR_observed - SR*) * sqrt(n - 1) /
+        sqrt(1 - gamma_3 * SR_observed +
+             ((gamma_4 - 1) / 4) * SR_observed^2)
+      )
+
+    where:
+      - SR* is the expected maximum Sharpe under the null
+        (compute_expected_max_sharpe)
+      - gamma_3 is skewness of returns
+      - gamma_4 is kurtosis of returns (NOT excess; if you have
+        excess kurtosis, add 3 before passing or use the parameter
+        excess_kurtosis below and the implementation adjusts)
+      - Phi is the standard normal CDF
+
+    The denominator is the Mertens (2002) non-normality correction
+    for Sharpe ratio standard error. The numerator deflates against
+    the expected-max-under-null benchmark.
+
+    Parameters
+    ----------
+    sharpe_observed : float
+        The candidate Sharpe ratio, on the same time scale as
+        sharpe_trials (e.g., both monthly or both annualized).
+    sharpe_trials : NDArray[np.float64]
+        1D array of N Sharpe ratios from comparable trials. Used
+        to compute SR* (the expected maximum under H_0).
+    n_obs : int
+        Number of return observations underlying sharpe_observed.
+        For monthly returns over 116 periods, n_obs = 116.
+    skewness : float
+        Sample skewness (gamma_3) of the return series underlying
+        sharpe_observed.
+    excess_kurtosis : float
+        Sample excess kurtosis (gamma_4 - 3) of the return series.
+        Pass excess kurtosis, not raw kurtosis; the function
+        converts internally.
+
+    Returns
+    -------
+    float
+        DSR in [0, 1]. Probability that the observed Sharpe is
+        not the result of selection bias from N trials. A
+        conservative threshold is 0.95.
+
+    Raises
+    ------
+    ValueError
+        If sharpe_trials has fewer than 2 elements, n_obs < 2,
+        or the Mertens denominator is non-positive (returns
+        distribution too pathological for inference).
+    """
+    if n_obs < 2:
+        raise ValueError(f"n_obs must be >= 2, got {n_obs}")
+
+    sr_star = compute_expected_max_sharpe(sharpe_trials)
+
+    # Mertens (2002) non-normality correction in the denominator
+    kurtosis = excess_kurtosis + 3.0
+    denom_sq = (
+        1.0
+        - skewness * sharpe_observed
+        + ((kurtosis - 1.0) / 4.0) * sharpe_observed ** 2
+    )
+    if denom_sq <= 0:
+        raise ValueError(
+            f"Mertens denominator is non-positive (got {denom_sq}); "
+            "return distribution is too pathological for DSR inference. "
+            "Check that skewness and excess_kurtosis are sample estimates "
+            "from the return series underlying sharpe_observed."
+        )
+
+    from scipy.stats import norm
+    z = (sharpe_observed - sr_star) * np.sqrt(n_obs - 1) / np.sqrt(denom_sq)
+    dsr = float(norm.cdf(z))
+    return dsr
