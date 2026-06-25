@@ -201,13 +201,13 @@ Methodological upgrades to v1's statistical inference, liquidity treatment, and 
 - **Item 2 — Residual diagnostics framework (closed).** Six pure functions in [`src/axiom_fund/diagnostics/residual_diagnostics.py`](./src/axiom_fund/diagnostics/residual_diagnostics.py); 30 unit tests; applied to both ResMom (cross-sectional, 121 months) and IVol (FF3 trailing-60-day, 203,833 regressions). Findings in [`docs/v2_diagnostics_findings.md`](./docs/v2_diagnostics_findings.md): ResMom is heteroskedastic in 86% of months at p<0.01 with extreme residual kurtosis (max 931, with GameStop in January 2021 producing the largest standardized residual at 34σ); IVol residuals are clean (DW distribution centered at 2.034, no systematic autocorrelation).
 - **Item 3 — HAC standard errors and bootstrapped CIs (closed).** Newey-West HAC and stationary block-bootstrap implementations in [`src/axiom_fund/diagnostics/inference.py`](./src/axiom_fund/diagnostics/inference.py); 24 unit tests; applied to v1's existing IC t-stats and Sharpe CIs ([`scripts/analysis/apply_inference_v2.py`](./scripts/analysis/apply_inference_v2.py)). Findings: HAC corrections on IC t-stats are 2-10% (largest for IVol at 10%, methodologically expected from its rolling-window construction); bootstrap Sharpe CIs are 11-13% wider than asymptotic. None of v1's qualitative conclusions overturned; the most fragile result is IVol's apparent significance (HAC L=5 t = 2.09, barely clears t > 2.0).
 
-**Phase 2 onward — planned:**
+**Phase 2 (rigorous reporting + research extensions) — in progress:**
 
-- **Deflated Sharpe (Bailey & López de Prado 2014)** on variant comparison, correcting for multiple-testing selection bias
-- **Quandt-Andrews structural break test** applied to the IC time series, replacing the existing ad-hoc bull/bear regime classification with formal break-point detection
-- **Walk-forward IC weighting variant** as a research exercise on overfitting risk in signal-weight selection
-- **Simple regime overlay** with binary regime indicator gating gross exposure, directly addressing the holdout-was-easy caveat
-- **Lazy Prices NLP signal** (Cohen-Malloy-Nguyen 2020): year-over-year cosine distance between consecutive 10-K filings, computed locally via `sentence-transformers` from SEC EDGAR. The text channel.
+- **Item 4 — Deflated Sharpe Ratio (closed).** Bailey & López de Prado (2014) DSR implementation in [`src/axiom_fund/diagnostics/inference.py`](./src/axiom_fund/diagnostics/inference.py); 15 unit tests; applied to v1's three holdout variants at N = 3, 7, 20 ([`scripts/analysis/apply_dsr_to_v1.py`](./scripts/analysis/apply_dsr_to_v1.py)). **First v2 finding that materially changes a v1 qualitative conclusion**: 3-sig and 4-sig composites containing ResMom fail DSR at all N; no-ResMom (the headline Sharpe 1.77 variant) clears DSR = 0.965 at N = 3 but fails at any broader trial count. The 1.77 nominal Sharpe is significant only under the narrowest possible variant interpretation. Full analysis in [`docs/v2_diagnostics_findings.md`](./docs/v2_diagnostics_findings.md).
+- **Item 5 — Quandt-Andrews structural break test** applied to the IC time series, replacing the existing ad-hoc bull/bear regime classification with formal break-point detection.
+- **Item 6 — Lazy Prices NLP signal** (Cohen-Malloy-Nguyen 2020): year-over-year cosine distance between consecutive 10-K filings, computed locally via `sentence-transformers` from SEC EDGAR. The text channel.
+- **Item 7 — Walk-forward IC weighting variant** as a research exercise on overfitting risk in signal-weight selection.
+- **Item 8 — Simple regime overlay** with binary regime indicator gating gross exposure, directly addressing the holdout-was-easy caveat.
 
 ### v3 (target: 2027)
 
