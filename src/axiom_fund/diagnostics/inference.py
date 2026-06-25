@@ -336,7 +336,10 @@ def compute_expected_max_sharpe(
         )
 
     var_sr = float(sharpe_trials.var(ddof=1))
-    if var_sr == 0:
+    # Tolerance check rather than exact-zero: np.var on identical values
+    # can return floating-point noise (e.g., 1e-17) rather than exactly 0.
+    # 1e-12 is well below any plausible Sharpe variance in real applications.
+    if var_sr < 1e-12:
         raise ValueError(
             "sharpe_trials has zero variance; expected max is undefined"
         )

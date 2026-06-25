@@ -22,6 +22,8 @@ from numpy.typing import NDArray
 
 from axiom_fund.diagnostics.inference import (
     compute_bootstrapped_sharpe_ci,
+    compute_deflated_sharpe,
+    compute_expected_max_sharpe,
     compute_hac_standard_error_of_mean,
     compute_hac_standard_errors,
 )
@@ -254,3 +256,137 @@ class TestBootstrappedSharpeCI:
     def test_too_few_returns_raises(self) -> None:
         with pytest.raises(ValueError, match="at least 2"):
             compute_bootstrapped_sharpe_ci(np.array([0.01]), block_size=1)
+
+
+# ============================================================================
+# Expected maximum Sharpe (DSR threshold)
+# ============================================================================
+
+
+class TestExpectedMaxSharpe:
+    def test_returns_positive_float(self) -> None:
+        trials = np.array([0.08, 0.12, 0.18, 0.10, 0.14, 0.09, 0.16])
+        sr_star = compute_expected_max_sharpe(trials)
+        assert isinstance(sr_star, float)
+        assert sr_star > 0
+
+    def test_scales_with_trial_dispersion(self) -> None:
+        # Doubling the std of trials should approximately double SR*.
+        trials_tight = np.array([0.10, 0.11, 0.12, 0.13, 0.14])
+        trials_wide = np.array([0.05, 0.10, 0.15, 0.20, 0.25])  # 4x wider range
+        sr_star_tight = compute_expected_max_sharpe(trials_tight)
+        sr_star_wide = compute_expected_max_sharpe(trials_wide)
+        # Ratio should be approximately std_wide / std_tight
+        ratio_std = trials_wide.std(ddof=1) / trials_tight.std(ddof=1)
+        ratio_sr_star = sr_star_wide / sr_star_tight
+        assert abs(ratio_sr_star - ratio_std) / ratio_std < 0.01
+
+    def test_increases_with_n_trials(self) -> None:
+        # More trials means a higher expected max under the same null.
+        # Sample two arrays with similar variance but different N.
+        rng = np.random.default_rng(42)
+        trials_small = rng.normal(0.0, 0.05, 5)
+        trials_large = rng.normal(0.0, 0.05, 50)
+        sr_star_small = compute_expected_max_sharpe(trials_small)
+        sr_star_large = compute_expected_max_sharpe(trials_large)
+        assert sr_star_large > sr_star_small
+
+    def test_two_trials_minimum(self) -> None:
+        # N=2 is the minimum; should run, return positive float
+        trials = np.array([0.05, 0.15])
+        sr_star = compute_expected_max_sharpe(trials)
+        assert sr_star > 0
+
+    def test_n_equals_one_raises(self) -> None:
+        with pytest.raises(ValueError, match="at least 2"):
+            compute_expected_max_sharpe(np.array([0.10]))
+
+    def test_zero_variance_raises(self) -> None:
+        # All trials identical → variance = 0 → expected max undefined
+        with pytest.raises(ValueError, match="zero variance"):
+            compute_expected_max_sharpe(np.array([0.10, 0.10, 0.10]))
+
+    def test_2d_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="1D"):
+            compute_expected_max_sharpe(np.zeros((5, 2)))
+
+
+# ============================================================================
+# Deflated Sharpe ratio
+# ============================================================================
+
+
+class TestDeflatedSharpe:
+    def test_returns_probability(self) -> None:
+        trials = np.array([0.08, 0.12, 0.18, 0.10, 0.14, 0.09, 0.16])
+        dsr = compute_deflated_sharpe(
+            0.227, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        assert isinstance(dsr, float)
+        assert 0.0 <= dsr <= 1.0
+
+    def test_high_sharpe_gives_high_dsr(self) -> None:
+        # Sharpe well above the trial max → DSR > 0.95
+        trials = np.array([0.05, 0.06, 0.07, 0.08, 0.09])
+        dsr = compute_deflated_sharpe(
+            0.30, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        assert dsr > 0.95
+
+    def test_low_sharpe_gives_low_dsr(self) -> None:
+        # Sharpe near the trial mean → DSR < 0.5
+        trials = np.array([0.05, 0.10, 0.15, 0.20, 0.25])
+        dsr = compute_deflated_sharpe(
+            0.05, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        assert dsr < 0.5
+
+    def test_normal_returns_no_mertens_adjustment(self) -> None:
+        # skewness=0, excess_kurtosis=0 → denominator = 1 - 0 + (2/4)*SR^2
+        # Compute DSR twice to confirm determinism and basic invariance
+        trials = np.array([0.08, 0.12, 0.18, 0.10, 0.14])
+        dsr1 = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        dsr2 = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        assert dsr1 == dsr2
+
+    def test_negative_skew_reduces_dsr(self) -> None:
+        # Negative skewness inflates the Mertens denominator → lower DSR
+        trials = np.array([0.08, 0.12, 0.18, 0.10, 0.14])
+        dsr_normal = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        dsr_skewed = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=-0.5, excess_kurtosis=0.0,
+        )
+        assert dsr_skewed < dsr_normal
+
+    def test_positive_excess_kurtosis_reduces_dsr(self) -> None:
+        # Heavy tails (positive ex kurtosis) inflate denominator → lower DSR
+        trials = np.array([0.08, 0.12, 0.18, 0.10, 0.14])
+        dsr_normal = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=0.0, excess_kurtosis=0.0,
+        )
+        dsr_heavy = compute_deflated_sharpe(
+            0.20, trials, n_obs=116, skewness=0.0, excess_kurtosis=5.0,
+        )
+        assert dsr_heavy < dsr_normal
+
+    def test_n_obs_too_small_raises(self) -> None:
+        trials = np.array([0.10, 0.15])
+        with pytest.raises(ValueError, match="n_obs"):
+            compute_deflated_sharpe(
+                0.20, trials, n_obs=1, skewness=0.0, excess_kurtosis=0.0,
+            )
+
+    def test_pathological_distribution_raises(self) -> None:
+        # Combination that makes the Mertens denominator non-positive
+        # SR=2.0, skew=10 → denom = 1 - 10*2 + ... = very negative
+        trials = np.array([0.5, 1.0, 1.5])
+        with pytest.raises(ValueError, match="Mertens denominator"):
+            compute_deflated_sharpe(
+                2.0, trials, n_obs=100, skewness=10.0, excess_kurtosis=0.0,
+            )
