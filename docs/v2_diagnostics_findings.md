@@ -165,6 +165,60 @@ The honest reading: v1's standard asymptotic inference was approximately correct
 
 The findings that *would* have qualitatively flipped a conclusion, and that did not occur: an IC t-stat that was significant under naive inference but failed under HAC, or a Sharpe CI that excluded zero under asymptotic inference but included zero under bootstrap. Neither happened on this dataset.
 
+## Item 4: deflated Sharpe ratio applied
+
+The v2 design doc Item 4 calls for Bailey & López de Prado (2014) deflated Sharpe ratio (DSR) applied to v1's variant comparison. DSR corrects two distinct biases when reporting the best Sharpe across multiple trials: (1) the Mertens (2002) correction for non-normality of returns, and (2) the selection bias from picking the best of N variants. The function implementations are in commit `9505755`; tests in `d87d0aa`. This section applies them to v1's holdout variants.
+
+Methodology choices, documented in code:
+- DSR computed on monthly Sharpes (formula is scale-sensitive through the Mertens denominator; mixing monthly and annualized would be incorrect)
+- Trial Sharpes: the three v1 holdout variants (3-sig, 4-sig, no-ResMom), giving N = 3 directly
+- N-sensitivity: also reported at N = 7 (rough estimate of total signal combinations considered during v1 development) and N = 20 (upper-bound including implicit choices like formation windows). For N > 3, synthetic trial arrays are constructed preserving the observed variance of the 3 actuals (the BLP-recommended approach when reported variants under-represent the true search space).
+- Mertens denominator uses sample skewness and excess kurtosis of each variant's 22-period holdout return series.
+
+Source data: `data/cache/backtest_full_top1000{_4sig,_no_resmom}/results.csv`. Script: `scripts/analysis/apply_dsr_to_v1.py`.
+
+### Per-variant statistics from the holdout
+
+| Variant | n | Monthly Sharpe | Annual Sharpe | Skewness | Excess kurtosis |
+|---|---|---|---|---|---|
+| 3-sig | 22 | 0.339 | 1.17 | -0.46 | -0.03 |
+| 4-sig | 22 | 0.408 | 1.41 | -0.94 | +1.45 |
+| no-ResMom | 22 | 0.499 | 1.73 | -0.01 | +0.97 |
+
+Note: the annualized Sharpe values are ~3% lower than the onepager's reported 1.18, 1.44, 1.77. The discrepancy is a methodology choice — the onepager uses geometric annualized return ÷ annualized vol; we use the standard arithmetic Sharpe (monthly mean ÷ monthly std × √12). DSR is invariant to this choice provided all inputs are on the same scale; this analysis uses monthly throughout.
+
+### DSR results
+
+| Variant | Annual SR | N | SR* (annual) | DSR | Clears 0.95? |
+|---|---|---|---|---|---|
+| 3-sig | 1.17 | 3 | 0.24 | 0.870 | no |
+| 3-sig | 1.17 | 7 | 0.39 | 0.828 | no |
+| 3-sig | 1.17 | 20 | 0.53 | 0.781 | no |
+| 4-sig | 1.41 | 3 | 0.24 | 0.896 | no |
+| 4-sig | 1.41 | 7 | 0.39 | 0.864 | no |
+| 4-sig | 1.41 | 20 | 0.53 | 0.828 | no |
+| no-ResMom | 1.73 | 3 | 0.24 | 0.965 | barely (yes) |
+| no-ResMom | 1.73 | 7 | 0.39 | 0.948 | no |
+| no-ResMom | 1.73 | 20 | 0.53 | 0.927 | no |
+
+### Interpretation
+
+This is the first v2 finding that materially changes one of v1's qualitative conclusions. Items 2 and 3 corroborated v1's existing claims; Item 4 does not.
+
+**Three substantive observations:**
+
+1. **The two composites containing ResMom fail DSR at all N.** Neither 3-sig nor 4-sig clears the conventional DSR > 0.95 threshold even at the narrowest N = 3. Their reported holdout Sharpes are statistically compatible with selection-bias chance given the variant search. This is consistent with Item 3's IC analysis showing ResMom contributes negligibly (HAC t ≈ 0.3); DSR now confirms from the Sharpe side that 3-sig and 4-sig are not robust holdout claims.
+
+2. **The no-ResMom variant barely clears DSR at N = 3, fails at any larger N.** At the narrowest possible trial interpretation (only the three published variants count), no-ResMom's DSR is 0.965 — just above the 0.95 threshold. As soon as we acknowledge any wider search (N = 7 reflecting signal-weighting alternatives considered during development; N = 20 including implicit decisions), DSR drops below 0.95. Whether no-ResMom survives multiple-testing correction depends on how many trials we count.
+
+3. **The DSR conclusion is sensitive to N in a way that asymptotic CIs were not.** v1's onepager reports no-ResMom's 95% CI as [1.10, 2.44] — comfortably positive. Item 3's bootstrap analysis (commit `473234a`) widened these but did not change qualitative conclusions. Item 4 is the first inference framework where the answer flips: significant at N = 3, not significant at N > 3.
+
+**The honest reading of v1's holdout claim:** the strategy survives standard inference and HAC + bootstrap (Items 2 and 3), but not deflated Sharpe under any reasonable expansion of the trial count. The no-ResMom Sharpe of 1.77 is the headline number; under DSR with N = 7, it is consistent with being the lucky best of seven equally-zero strategies. Whether to believe N = 3 (narrow, defensible by published-variants-only argument) or N > 3 (broader, defensible by counting development trials honestly) is a methodological choice, not a statistical one. The pre-commitment to honest reporting requires acknowledging both.
+
+**What does not change:** the no-ResMom composite still has the best out-of-sample Sharpe and the highest hit rate. DSR does not say the signal is fake; it says the headline number is not robust to selection bias correction at a reasonable trial count. The strategy may still work; the reported Sharpe is just less informative than it appeared.
+
+**Implication for the v2 deliverable**: the no-ResMom variant's headline Sharpe of 1.77 should not be claimed as "robust to multiple-testing correction" in any forward-facing communication. The honest framing is "1.77 nominal Sharpe; DSR at N=3 = 0.96 just clears 0.95; DSR at any broader trial count fails."
+
 ## Implications for v2
 
 These findings motivate the work items already in the v2 design doc:

@@ -1,0 +1,7 @@
+Run: 2026-06-25T20:30:35.746959
+Holdout start: 2023-01-01
+Variants: ['3-sig', '4-sig', 'no-ResMom']
+N choices: [3, 7, 20]
+DSR threshold reported: 0.95
+Sharpe convention: monthly mean / monthly std, annualized × √12
+Moments: pandas Series.skew() and .kurtosis() (excess kurtosis)
