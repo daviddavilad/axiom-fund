@@ -1,0 +1,6 @@
+Run: 2026-06-27T23:34:05.521352
+Source: data/cache/ic_analysis_4sig/ic_long.parquet
+N periods per signal: 116
+Trimming: 0.15
+Restriction count m: 1 (intercept-only regression)
+Signals tested: ['z_gp', 'z_ivol', 'z_pead', 'z_resmom']

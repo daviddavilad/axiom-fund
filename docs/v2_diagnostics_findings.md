@@ -219,6 +219,48 @@ This is the first v2 finding that materially changes one of v1's qualitative con
 
 **Implication for the v2 deliverable**: the no-ResMom variant's headline Sharpe of 1.77 should not be claimed as "robust to multiple-testing correction" in any forward-facing communication. The honest framing is "1.77 nominal Sharpe; DSR at N=3 = 0.96 just clears 0.95; DSR at any broader trial count fails."
 
+## Item 5: Quandt-Andrews structural-break test applied
+
+The v2 design doc Item 5 calls for the Quandt-Andrews structural-break test on IC time series, "replacing the existing ad-hoc bull/bear regime classification with formal break-point detection." The module + tests are in commit `0c50a86`. This section applies them to v1's four monthly IC series.
+
+Methodology choices, documented in code:
+- For each signal, the test is `ic_monthly = intercept + epsilon` (regression on a constant), testing for a structural break in the mean. m = 1.
+- Trimming π₀ = 0.15 (standard; candidate break dates are searched over the middle 70% of the 116-period sample).
+- sup_F statistic + Hansen (1997) chi-squared p-value via Table 2 lookup.
+
+Source data: `data/cache/ic_analysis_4sig/ic_long.parquet` (116 monthly Spearman ICs per signal, Jan 2015 - Nov 2024). Script: `scripts/analysis/apply_qa_to_ic.py`.
+
+### Results
+
+| Signal | sup_F | Break date | Mean pre | Mean post | Hansen p |
+|---|---|---|---|---|---|
+| IVol | 7.17 | 2021-01-29 | +0.004 | +0.080 | 0.097 |
+| GP | 2.65 | 2020-07-31 | +0.038 | +0.005 | 0.634 |
+| PEAD | 2.11 | 2020-12-31 | +0.012 | +0.035 | 0.762 |
+| ResMom | 1.98 | 2023-01-31 | -0.005 | +0.035 | 0.793 |
+
+For context: Andrews (1993) critical values at m = 1, π₀ = 0.15 are sup_F ≈ 8.85 (5%), 11.79 (1%). None of the four signals reach the 5% threshold; the most extreme (IVol) falls short at p = 0.097.
+
+### Interpretation
+
+**Headline: no signal shows statistically significant evidence of a structural break in mean IC.** The strongest candidate is IVol at p = 0.097, which does not clear the conventional 5% threshold and is far from the Bonferroni-adjusted threshold (0.05 / 4 = 0.0125) that family-wise multiple-testing across the four signals would require.
+
+This is a clean negative result for v1's regime-dependent narrative. v1's onepager has language about bull vs bear regime performance, implying that signals behave differently in different macro environments. Quandt-Andrews finds no statistical support for that implied story at the individual signal level. Whether v1's *portfolio* performance shows regime dependence (rather than its individual signals' IC) is a different question this test does not address.
+
+**Three observations worth noting, without overclaiming:**
+
+1. **IVol is the only signal in the "interesting" zone.** Pre-break IVol IC of +0.004 (essentially zero) shifting to +0.080 (substantial positive IC) is a large relative shift; the break date 2021-01-29 aligns with the COVID / meme-stock regime change. But p = 0.097 does not constitute statistical evidence at any conventional threshold, and Item 3 already showed IVol has the most autocorrelation in its IC series — both findings consistently point to IVol's IC series being the least stable of the four, but neither finding rises to "we have detected a regime change in this signal."
+
+2. **ResMom's apparent shift coincides with the holdout window.** ResMom's largest local F-statistic occurs at 2023-01-31, exactly the holdout window start. Pre-break mean (the 2015-2022 in-sample period) is essentially zero; post-break mean is positive. At p = 0.793 this is *clearly not* a statistically significant finding — but the timing aligns with v1's observation that the holdout window was regime-friendly. Speculative; not a claim.
+
+3. **N = 116 is small for break detection.** Power for detecting moderate breaks is limited. The "no significant break" conclusion for the three quiet signals could mean either (a) means are genuinely stable, or (b) breaks exist but our power isn't sufficient. Item 5 does not distinguish these cases. The honest conclusion is the conjunction: "with this sample size and this test, no evidence of a break."
+
+### Implication for the v1 narrative
+
+The v1 onepager's regime discussion was presented as descriptive characterization, not as a tested claim. Item 5 does not invalidate it (Item 5 tests structural breaks in mean IC, not regime-conditional performance generally), but Item 5 also provides no statistical backing for it. **The honest framing going forward: regime references in v1 should be treated as descriptive observations about subperiods, not as established empirical findings.** Establishing actual regime dependence would require either a much larger sample or a different test (e.g., Markov-switching, regime-classification + sub-sample inference with adequate power).
+
+This is the second v2 finding where rigorous methodology produces a "less than the loose narrative suggested" conclusion. Item 4 found that v1's headline 1.77 Sharpe is sensitive to multiple-testing N. Item 5 finds that v1's regime story has no formal structural-break support. Both findings constrain how v1's results should be communicated, not whether v1's strategy works.
+
 ## Implications for v2
 
 These findings motivate the work items already in the v2 design doc:
