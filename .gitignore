@@ -37,6 +37,7 @@ data/interim/
 # Credentials (critical — never commit)
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 wrds_credentials*
