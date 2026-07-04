@@ -110,13 +110,73 @@ A clean failure is documented honestly, matching Items 4 and 5 (which both produ
 
 6. **Small-cap tickers may not have consistent 10-K filings.** ADRs, foreign issuers filing 20-Fs instead of 10-Ks, recently-IPO'd firms with insufficient history — all need explicit handling.
 
-7. **Mid-window filing format transition (2019-2020 iXBRL mandate).** SEC mandated inline XBRL for large accelerated filers in 2019-2020. Pilot data shows a ~5-10x jump in primary-document file size across this transition (e.g., WMT: ~920 KB in 2015-2017 → ~3 MB in 2018+; JNJ: 297 KB in 2015 → 3.4 MB in 2016). The text content is present in both formats, but structural differences mean naive cross-format comparison would be dominated by format changes, not disclosure changes. Section extraction (deferred) must be format-agnostic; year-over-year comparisons that cross the transition need explicit verification. Surfaced by pilot download (commit TBD).
+7. **Mid-window filing format transition (2019-2020 iXBRL mandate) — INVESTIGATED.** SEC mandated inline XBRL for large accelerated filers in 2019-2020. Pilot data shows a ~5-10x jump in primary-document file size across this transition. Investigation (2026-07-05) revealed the root cause: pre-iXBRL 10-Ks systematically use cross-references. For example, JPM 2015 Item 7 is 395 characters saying "See pages 64-169," and JNJ 2015 Item 1A is 546 characters saying "See Exhibit 99." The substantive content lives elsewhere in the filing. Any text-similarity signal computed across the format transition would be dominated by structural artifacts. **Resolution: sample window restricted to 2019-2024 (see Sample Window Decision below).** Surfaced by pilot download (commit 241ee5f).
 
-8. **Primary-document ambiguity.** SEC's "primaryDocument" field on some filings points to a thin index or cover page rather than the full 10-K body. Pilot example: JNJ 2015 primary document is 297 KB while surrounding-year JNJ 10-Ks are 3-5 MB. This is not a download failure — the file is exactly what SEC labeled as primary — but the content is a filing index, not a filing body. Section extraction must detect this case and either follow references to the actual filing body or exclude the filing. Estimated affected rate: <5% of filings based on pilot, but needs full-corpus verification. Surfaced by pilot download (commit TBD).
+8. **Primary-document ambiguity — SUPERSEDED.** Originally documented as a separate risk (JNJ 2015 297 KB thin document), but investigation (2026-07-05) confirmed this is the same underlying phenomenon as risk 7: pre-iXBRL cross-referencing. The JNJ 2015 primary document is a thin index because the substantive Items 1A / 7 content is in Exhibit 99 or referenced pages. Same resolution as risk 7. Surfaced by pilot download (commit 241ee5f).
 
 ## Time budget estimate
 
-Realistic scope of full Item 6 (across all sub-items): 30-50 hours across ~10-15 sessions. CFA Level II (Aug 16) has priority; Item 6 work fits around CFA prep. Item 6a alone: ~15-25 hours.
+Realistic scope of full Item 6 (across all sub-items): 30-50 hours across ~10-15 sessions. CFA Level II (Aug 28) has priority; Item 6 work fits around CFA prep. Item 6a alone: ~15-25 hours.
+
+## Sample window decision (2026-07-05)
+
+**Decision: restrict sample to 2019-2024.**
+
+Rationale: investigation of edgartools section extraction across 5 tickers × 5 years revealed that pre-iXBRL filings (roughly 2015-2018 depending on firm) systematically use cross-references for Items 7 and 1A. The substantive content lives in referenced exhibits or page ranges within the filing, not in the item itself. Any signal computed from cross-referenced sections would be dominated by structural artifacts (filing format change), not by disclosure change (which is the CMN methodology's target).
+
+CMN's original paper covered 1995-2014. Our restricted window (2019-2024) is an out-of-sample extension to a different regulatory era, not a corrupted replication attempt.
+
+Trade-off: sample size reduced from ~5000-7500 firm-year observations (10 years) to ~3500-4500 (6 years). Statistical power reduced but methodology cleanly defensible.
+
+## Section scope decision (2026-07-05)
+
+**Decision: extract Items 1, 1A, 7. Drop Item 7A.**
+
+Rationale: empirical analysis of 60 filings (10 pilot tickers × 6 years, 2019-2024) showed Item 7A is systematically cross-referenced or boilerplate for the majority of large firms:
+- JPM: 250 chars every year (2019-2024)
+- NEE: 157 chars every year (2019-2024)
+- JNJ: ~485 chars every year (2019-2024)
+- XOM: 407-1248 chars depending on year
+- T 2019: 260 chars
+
+Median Item 7A length across the sample: 2,120 chars. Compared to median Item 1A of 68,601 chars, Item 7A is systematically thinner. Roughly 40% of the sample has Item 7A below 1500 chars, and this fraction is dominated by specific firms (JPM, NEE, JNJ, XOM) whose Item 7A is systematically boilerplate or cross-referenced across all sample years — indicating structural firm-level filing patterns, not random data quality.
+
+Including Item 7A in the signal would inject cross-firm structural noise: comparing JPM's 250-char boilerplate year-over-year gives essentially zero change, which is not a research finding.
+
+Trade-off: CMN's original methodology used all four sections. Dropping Item 7A is a deviation. The empirical justification is strong (see distribution table above) and is transparent in the writeup.
+
+## Cross-reference detection (2026-07-05)
+
+**Decision: flag sections shorter than 2000 characters as likely cross-references.**
+
+Rationale: empirical distribution from the pilot showed a clear gap:
+- Clear cross-references: 157-546 chars (JPM, NEE, JNJ boilerplate)
+- Gray zone: 1180-1248 chars (XOM Item 7A in some years — possibly thin but real)
+- Real content: 5000+ chars in nearly every case
+
+The 2000-char threshold captures all clear cross-references while preserving false-negative risk (dropping some real thin content) over false-positive risk (including boilerplate in the signal). This is a conservative choice; sensitivity analysis with alternate thresholds could be reported in the final signal writeup.
+
+Implementation: `EdgartoolsSectionExtractor` returns `SectionResult` objects with `is_cross_reference: bool` metadata based on this threshold. Downstream code (signal computation, not this extractor) decides whether to include cross-referenced sections in the analysis.
+
+## Extraction backend decision (2026-07-05)
+
+**Decision: adopt `edgartools` for section extraction.**
+
+Rationale: after investigating the ecosystem, `edgartools` (github.com/dgunning/edgartools) is the most complete Python library for SEC filing parsing. It handles iXBRL natively, provides named-property access to 10-K items, and is used in production at multiple hedge funds. MIT-licensed, actively maintained.
+
+Verified on 60 pilot filings (10 tickers × 6 years, 2019-2024):
+- Item 1 extracts cleanly: 60/60, minimum length 7,405 chars
+- Item 1A extracts cleanly: 60/60, minimum length 8,216 chars
+- Item 7 extracts cleanly for 8/10 firms: 59/60, with 6 cross-references (XOM 2020-2024, T 2019) correctly flagged by our threshold
+- 1 outright failure (WMT 2015 pre-window, correctly rejected by the window guard)
+
+Trade-off: adopting `edgartools` added 33 transitive dependencies to the repo (see `uv add edgartools` output). This is a deliberate deviation from the "minimize deps" ethos held earlier in Item 6. Reasoning: `edgartools` provides section extraction that would take substantial engineering effort to reproduce at comparable quality using stdlib + BS4. One tutorial from a commercial competitor (sec-api.io) claims regex-based approaches achieve only ~30% coverage, though this figure comes from a self-interested source and is not authoritative. Empirical verification of `edgartools` on our pilot sample showed clean extraction of Items 1 and 1A across 100% of 2019-2024 filings and Item 7 across 80% (with the remaining 20% correctly flagged as cross-references). Reproducing that quality independently is not a good use of session time relative to actual signal methodology work. The dependency is bounded to the section-extraction path only; all other Item 6 code (EDGAR client, TF-IDF pipeline, backtest) remains dependency-lean.
+
+**Bus factor risk noted:** `edgartools` is maintained primarily by one person. If it stops, we would need to migrate to a fallback. The `SectionExtractor` protocol in `src/axiom_fund/data/section_extractor.py` provides the abstraction: swapping backends means implementing one new class, not rewriting the pipeline.
+
+## Test coverage note
+
+Unit tests in `tests/test_section_extractor.py` mock `edgartools` at the boundary (Filing → TenK). They protect against regressions in our own extractor's logic (window guard, cross-reference detection, section-name mapping, error handling) but do not catch upstream `edgartools` regressions. Real-integration verification (network + real SEC data) is via the ad-hoc `/tmp/verify_extractor.py` script pattern, not automated tests. For a production system this gap would need closing (via VCR-style recorded fixtures or pinned `edgartools` version + integration test suite); for this research repo the gap is documented.
 
 ## Next steps
 

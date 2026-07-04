@@ -17,6 +17,7 @@ dependencies = [
     "statsmodels>=0.14",
     "cvxpy>=1.5",
     "matplotlib>=3.10.9",
+    "edgartools>=5.40.1",
 ]
 
 [project.urls]
