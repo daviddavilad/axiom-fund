@@ -178,12 +178,36 @@ Trade-off: adopting `edgartools` added 33 transitive dependencies to the repo (s
 
 Unit tests in `tests/test_section_extractor.py` mock `edgartools` at the boundary (Filing → TenK). They protect against regressions in our own extractor's logic (window guard, cross-reference detection, section-name mapping, error handling) but do not catch upstream `edgartools` regressions. Real-integration verification (network + real SEC data) is via the ad-hoc `/tmp/verify_extractor.py` script pattern, not automated tests. For a production system this gap would need closing (via VCR-style recorded fixtures or pinned `edgartools` version + integration test suite); for this research repo the gap is documented.
 
+## Corpus expansion (2026-07-05)
+
+**Universe: 1,448 unique firms** as the union of top-1000 U.S. common stocks by market cap at 6 year-end snapshots (2018-12-31 through 2023-12-29). Snapshot approach was rejected in favor of union to avoid single-date selection bias; distribution shows 672 firms present in all 6 snapshots (stable core), 776 firms present in ≤4 snapshots (churn). Constructed via `scripts/data_acquisition/build_universe.py` using the existing `Universe` module.
+
+**CIK resolution: 1,117 firms resolved** (77.1% of universe). 331 firms failed resolution — nearly all are firms that were acquired or delisted during the sample window (SIVB, CELG, CERN, TECD, and similar). SEC's `company_tickers.json` only contains currently-active tickers. This creates a real survivorship bias (see Known Limitations below).
+
+**Corpus downloaded: 6,286 10-K filings, 27.7 GB** across the 1,117 resolved firms. Average 5.6 filings per firm across the 6-year sample window. Zero download failures. Scripts: `resolve_ciks.py`, `download_10k_corpus.py`. Storage under `data/raw/edgar/{ticker}/10-K/{filing_date}/`.
+
 ## Next steps
 
-**This session (complete):** shipped EDGAR client (`src/axiom_fund/data/edgar.py`) and pilot download (`scripts/data_acquisition/download_10k_sample.py`). 100 filings across 10 diverse tickers, zero failures. Two data-quality risks (format transition, primary-document ambiguity) surfaced and documented as risks 7 and 8 above.
+**Next session:** run `EdgartoolsSectionExtractor` on the full 6,286-filing corpus. Store extracted sections per (ticker, filing_date, section) to parquet. Report failure rate + cross-reference rate. Estimated 60-90 min extraction time based on per-filing parsing costs.
 
-**Next session:** investigate the two data-quality risks. Specifically: (a) inspect a 2015 pre-iXBRL filing and a 2020 post-iXBRL filing side-by-side; verify section extraction can handle both; (b) inspect the JNJ 2015 filing to characterize what "thin primary document" actually contains and how to detect it programmatically.
+**Following sessions:** build TF-IDF vectorization pipeline. Compute year-over-year cosine similarity per firm. Portfolio-sort backtest (long-top-quintile minus short-bottom-quintile). Findings document.
 
-**Following 2-3 sessions:** scale corpus to full v1 universe (~700-900 firms), implement section extraction (Items 1, 1A, 7, 7A) with format-agnostic parsing, build TF-IDF vectorization pipeline.
+**Later:** Item 6b (transformer extension). Item 6c (composite integration, conditional on 6a success).
 
-**Later sessions:** Item 6a portfolio-sort backtest and findings document. Then Item 6b (transformer extension), then conditional 6c (composite integration).
+## Known limitations
+
+Consolidated list of documented issues that a reviewer would appropriately flag, retained inline so future readers see the methodological trade-offs alongside the methodology.
+
+1. **Survivorship bias in CIK resolution.** 22.9% of the top-1000 union universe (331 firms) failed CIK resolution via SEC's `company_tickers.json`, which only contains currently-active tickers. Missing firms are almost all acquisitions or delistings during 2019-2024 (SIVB, CELG, CERN, TECD, and similar). This biases the sample toward survivors: the effect is directional against distressed and acquired firms, precisely the tail where CMN-style disclosure divergence might be strongest. A fix via CRSP-Compustat linking (PERMNO → gvkey → CIK through `comp.security`) was scoped at 30-50 minutes and deferred to a future robustness session; not blocking corpus expansion.
+
+2. **`Universe.as_of()` silently fails on non-trading days.** The universe module returns 0 rows without warning when passed a non-trading date (e.g., `2022-12-31` fell on a Saturday). Discovered when the initial `build_universe.py` returned 0-row snapshots for 2022 and 2023 year-ends. Worked around by using actual last trading days (2022-12-30, 2023-12-29). The underlying bug remains in `Universe.as_of()`; a proper fix (either raise on non-trading dates, or auto-align to nearest prior trading day) is deferred but noted for future infrastructure work.
+
+3. **`market_cap` in universe parquet is stale.** Because we take the union across 6 snapshots and dedup to keep the first appearance, the `market_cap` and other size columns reflect the value at the firm's first snapshot only. A firm first appearing in 2018 has its 2018 market cap saved, not its 2023 value. Downstream code that uses size for weighting must not use this column directly; either regenerate with the specific date needed, or accept the caveat.
+
+4. **Test coverage gap for edgartools regressions.** Unit tests for `EdgartoolsSectionExtractor` mock the edgartools boundary and protect against regressions in our own logic. They do not catch upstream `edgartools` regressions. For a production system this would need closing (via VCR-style recorded fixtures or pinned version + integration test suite); for this research repo the gap is documented.
+
+5. **Snapshot bias in market_cap universe construction.** Even with the union approach, "top-1000 by market cap at each year-end" is one specific methodology choice. Alternative constructions (rolling top-1000 rebalanced annually, top-1000 by average market cap across the window, top-1000 by trailing 12-month median) would produce different samples. Our choice is defensible but not the only defensible one.
+
+6. **Item 7A dropped from signal scope (empirical, not accidental).** Investigation showed Item 7A is systematically thin (boilerplate or cross-referenced) for large firms including JPM, NEE, JNJ, XOM — 40% of the pilot sample. Signal scope is Items 1, 1A, 7 only. This is a documented deviation from CMN's original methodology, empirically justified against the pilot distribution.
+
+7. **Pre-iXBRL filings excluded (2015-2018).** Investigation revealed pre-iXBRL 10-Ks systematically use cross-references. Sample window restricted to 2019-2024 (post-iXBRL mandate). Sample size reduced from a hypothetical ~5000-7500 firm-year observations to ~3500-4500. Documented deviation from CMN's original 1995-2014 window; our study is an out-of-sample extension, not a corrupted replication attempt.
