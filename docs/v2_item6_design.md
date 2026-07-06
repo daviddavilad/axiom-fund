@@ -186,6 +186,32 @@ Unit tests in `tests/test_section_extractor.py` mock `edgartools` at the boundar
 
 **Corpus downloaded: 6,286 10-K filings, 27.7 GB** across the 1,117 resolved firms. Average 5.6 filings per firm across the 6-year sample window. Zero download failures. Scripts: `resolve_ciks.py`, `download_10k_corpus.py`. Storage under `data/raw/edgar/{ticker}/10-K/{filing_date}/`.
 
+## Signal prototype (2026-07-06)
+
+Pilot-scale prototype on the 10-ticker × 6-year corpus (60 filings) to decide whether to invest full-corpus extraction time before validating the methodology at any scale. Script: `scripts/analysis/prototype_lazy_prices_signal.py`.
+
+Pre-committed directional criteria (locked before running):
+1. Usable dispersion: IQR of year-over-year cosine similarity materially above zero (≥ 0.02)
+2. Directionally plausible: median in [0.5, 0.99]
+3. Section independence: cross-section correlations not all 0.99+
+
+Results:
+
+| Section | N pairs | Min | Median | IQR |
+|---|---|---|---|---|
+| Item 1 | 50 | 0.061 | 0.967 | 0.040 |
+| Item 1A | 50 | 0.117 | 0.980 | 0.048 |
+| Item 7 | 43 | 0.712 | 0.964 | 0.039 |
+
+Cross-section correlations (at the ticker-year_pair level): Item 1 vs Item 1A = 0.71; Item 1 vs Item 7 = 0.52; Item 1A vs Item 7 = 0.57.
+
+**All three criteria passed.** Decision: proceed to full-corpus section extraction next session.
+
+Caveats named honestly:
+- The IQR threshold of 0.02 was generous; a stricter pre-commit would have required IQR ≥ 0.10, which we would have failed. The dispersion we found is real but modest.
+- Signal strength depends on the left tail (firms with the largest year-over-year textual change), not on the median. Tail firms exist in the pilot (GE 2023-2024, T 2021-2022) and correspond to real corporate events (GE's Aerospace/Vernova/HealthCare split, AT&T's WarnerMedia spin-off), not extraction artifacts. Whether tail firms predict returns is the actual research question, not answered by the prototype.
+- XOM's Item 7 is systematically cross-referenced and correctly excluded by the extractor; expect similar section-specific dropout across the full universe.
+
 ## Next steps
 
 **Next session:** run `EdgartoolsSectionExtractor` on the full 6,286-filing corpus. Store extracted sections per (ticker, filing_date, section) to parquet. Report failure rate + cross-reference rate. Estimated 60-90 min extraction time based on per-filing parsing costs.

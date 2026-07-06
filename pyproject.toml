@@ -18,6 +18,7 @@ dependencies = [
     "cvxpy>=1.5",
     "matplotlib>=3.10.9",
     "edgartools>=5.40.1",
+    "scikit-learn>=1.9.0",
 ]
 
 [project.urls]
