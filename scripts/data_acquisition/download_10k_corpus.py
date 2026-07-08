@@ -22,16 +22,33 @@ import pandas as pd
 from axiom_fund.data.edgar import EdgarClient
 
 
-INPUT_PATH = Path("data/cache/lazy_prices_ciks.parquet")
-OUTPUT_DIR = Path("data/raw/edgar")
-PROGRESS_PATH = Path("data/cache/lazy_prices_download_progress.parquet")
-METADATA_PATH = Path("data/cache/lazy_prices_download.txt")
+DEFAULT_INPUT_PATH = Path("data/cache/lazy_prices_ciks.parquet")
+DEFAULT_OUTPUT_DIR = Path("data/raw/edgar")
+DEFAULT_PROGRESS_PATH = Path("data/cache/lazy_prices_download_progress.parquet")
+DEFAULT_METADATA_PATH = Path("data/cache/lazy_prices_download.txt")
 
 SAMPLE_START = "2019-01-01"
 SAMPLE_END = "2025-01-01"
 
 
 def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH,
+                        help=f"Input CIK parquet (default: {DEFAULT_INPUT_PATH})")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
+                        help=f"Download destination (default: {DEFAULT_OUTPUT_DIR})")
+    parser.add_argument("--progress", type=Path, default=DEFAULT_PROGRESS_PATH,
+                        help=f"Progress checkpoint (default: {DEFAULT_PROGRESS_PATH})")
+    parser.add_argument("--metadata", type=Path, default=DEFAULT_METADATA_PATH,
+                        help=f"Metadata output (default: {DEFAULT_METADATA_PATH})")
+    args = parser.parse_args()
+
+    INPUT_PATH = args.input
+    OUTPUT_DIR = args.output_dir
+    PROGRESS_PATH = args.progress
+    METADATA_PATH = args.metadata
+
     if not INPUT_PATH.exists():
         print(f"ERROR: {INPUT_PATH} not found. Run resolve_ciks.py first.",
               file=sys.stderr)

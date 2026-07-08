@@ -41,11 +41,11 @@ from axiom_fund.data.section_extractor import (
 )
 
 
-INPUT_PATH = Path("data/cache/lazy_prices_ciks.parquet")
-OUTPUT_PATH = Path("data/cache/lazy_prices_sections.parquet")
-FAILED_PATH = Path("data/cache/lazy_prices_sections_failed.parquet")
-PROGRESS_PATH = Path("data/cache/lazy_prices_extraction_progress.parquet")
-METADATA_PATH = Path("data/cache/lazy_prices_sections.txt")
+DEFAULT_INPUT_PATH = Path("data/cache/lazy_prices_ciks.parquet")
+DEFAULT_OUTPUT_PATH = Path("data/cache/lazy_prices_sections.parquet")
+DEFAULT_FAILED_PATH = Path("data/cache/lazy_prices_sections_failed.parquet")
+DEFAULT_PROGRESS_PATH = Path("data/cache/lazy_prices_extraction_progress.parquet")
+DEFAULT_METADATA_PATH = Path("data/cache/lazy_prices_sections.txt")
 
 LOCAL_STORAGE_PATH = "data/raw/edgar"
 
@@ -54,6 +54,26 @@ SAMPLE_END_YEAR = 2024
 
 
 def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH,
+                        help=f"Input CIK parquet (default: {DEFAULT_INPUT_PATH})")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH,
+                        help=f"Sections output parquet (default: {DEFAULT_OUTPUT_PATH})")
+    parser.add_argument("--failed", type=Path, default=DEFAULT_FAILED_PATH,
+                        help=f"Failed extractions parquet (default: {DEFAULT_FAILED_PATH})")
+    parser.add_argument("--progress", type=Path, default=DEFAULT_PROGRESS_PATH,
+                        help=f"Progress checkpoint (default: {DEFAULT_PROGRESS_PATH})")
+    parser.add_argument("--metadata", type=Path, default=DEFAULT_METADATA_PATH,
+                        help=f"Metadata output (default: {DEFAULT_METADATA_PATH})")
+    args = parser.parse_args()
+
+    INPUT_PATH = args.input
+    OUTPUT_PATH = args.output
+    FAILED_PATH = args.failed
+    PROGRESS_PATH = args.progress
+    METADATA_PATH = args.metadata
+
     if not INPUT_PATH.exists():
         print(f"ERROR: {INPUT_PATH} not found. Run resolve_ciks.py first.",
               file=sys.stderr)

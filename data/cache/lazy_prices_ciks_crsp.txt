@@ -1,0 +1,8 @@
+Run: 2026-07-08T13:27:47.142726
+Input: data/cache/lazy_prices_universe.parquet
+Universe size: 1448
+CRSP-linked rows: 1448
+Compustat pool: 30942
+Merged rows: 1448
+Resolved with CIK: 1332
+Resolution rate: 91.99%

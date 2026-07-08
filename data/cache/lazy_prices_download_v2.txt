@@ -1,0 +1,7 @@
+Run: 2026-07-08T13:44:35.330082
+Firms input: 291
+Firms complete: 291
+Firms errored: 0
+Total filings: 1146
+Total bytes: 4869537065
+Sample window: [2019-01-01, 2025-01-01)
