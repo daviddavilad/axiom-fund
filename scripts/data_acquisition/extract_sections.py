@@ -33,7 +33,8 @@ import pandas as pd
 
 import edgar
 edgar.set_identity("Axiom Fund Research daviddavilacorraliza@gmail.com")
-from edgar import Company
+# Note: no longer using edgar.Company — see Path C design 2026-07-09.
+# CIK-based routing via edgar.get_entity() replaces ticker-based routing.
 
 from axiom_fund.data.section_extractor import (
     EdgartoolsSectionExtractor,
@@ -138,7 +139,18 @@ def main() -> int:
             continue
 
         try:
-            filings = list(Company(ticker).get_filings(form="10-K"))
+            # Path C: CIK-based routing (not ticker-based). Handles firms
+            # whose ticker moved to a different entity mid-window (Sprint
+            # -> SentinelOne, etc.) by resolving directly to the historical
+            # entity via CIK.
+            cik_padded = str(cik).zfill(10)
+            entity = edgar.get_entity(cik_padded)
+            filings = list(entity.get_filings(form="10-K"))
+            # Strict 10-K filter: Entity API (and Company API) return 10-K/A
+            # amendments when form='10-K' is requested. For CMN signal
+            # analysis we want one primary filing per fiscal year, not
+            # amendments. See investigation 2026-07-09.
+            filings = [f for f in filings if f.form == "10-K"]
             windowed = [
                 f for f in filings
                 if SAMPLE_START_YEAR <= f.filing_date.year <= SAMPLE_END_YEAR
