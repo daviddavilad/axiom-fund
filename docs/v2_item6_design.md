@@ -59,10 +59,12 @@ Item 6 is split into three sub-items with explicit dependencies. Each has a defi
 
 ## Universe and data
 
-- **Firms:** intersection of (a) v1's top-1000 by market cap and (b) firms with ≥2 consecutive 10-K filings 2015-2024
-- **Sample coverage estimate:** ~700-900 firms with ~7-9 year-over-year comparisons each, roughly 5000-7500 firm-year observations
-- **Look-ahead prevention:** signal observable only at filing date + a small buffer (5 trading days) to reflect realistic public disclosure lag
-- **Rebalance:** monthly, using most recent available signal per firm; signals become stale between filings
+- **Firms:** union of top-1000 by market cap across 6 year-end snapshots (2018-12-31 through 2023-12-29). 1,448 unique firms in the universe.
+- **CIK resolution:** 96.1% (1,392 of 1,448) via merged SEC + CRSP-Compustat methodology (see Corpus construction below). 56 firms unresolvable via either source.
+- **Extraction:** CIK-based via edgartools' `get_entity()` API; strict `form=='10-K'` filter excludes 10-K/A amendments.
+- **Actual coverage:** 1,369 firms with extracted sections, 7,359 filings, 21,932 section rows across 2019-2024. Average 5.4 filings per firm; ~3.0 section rows per filing (Items 1, 1A, 7).
+- **Look-ahead prevention:** signal observable only at filing date + a small buffer (5 trading days) to reflect realistic public disclosure lag.
+- **Rebalance:** monthly, using most recent available signal per firm; signals become stale between filings.
 
 ## EDGAR acquisition plan
 
@@ -74,9 +76,15 @@ Item 6 is split into three sub-items with explicit dependencies. Each has a defi
 - **Storage:** local filesystem, `data/raw/edgar/{ticker}/10-K/{filing_date}/`
 - **Pilot:** 10 diverse tickers (AAPL, MSFT, JPM, XOM, JNJ, WMT, T, NEE, KO, GE) to validate parser against structurally different 10-K styles before scaling
 
-## Section extraction plan (Item 6a, later in project)
+## Section extraction (implemented)
 
-Not implemented in this session. Design note: 10-K format has evolved over the last decade. Items 1, 1A, 7, 7A must be extracted via regex-based section header matching, with fallback for missing or renamed sections. Strict mode (drop filings where any of the 4 sections missing) vs lenient mode (use available sections) to be decided empirically after pilot corpus is downloaded.
+Implemented via `scripts/data_acquisition/extract_sections.py` using edgartools' TenK object accessors (`business`, `risk_factors`, `management_discussion`). Items 1 (Business), 1A (Risk Factors), 7 (MD&A) extracted per filing. Item 7A dropped based on empirical evidence that large firms systematically use cross-references or boilerplate for that section (see Section scope decision below).
+
+**Path C (CIK-based) rationale:** initial ticker-based extraction (via `Company(ticker)`) failed for firms whose ticker moved between SEC entities mid-window. Example: Sprint's ticker `S` moved to SentinelOne in 2021, so `Company('S').get_filings()` returns only SentinelOne's filings and misses historical Sprint. Rebuilt as CIK-based (via `edgar.get_entity(cik)`) to resolve each firm to its historical entity via the CIK we resolved in the merged CIK file.
+
+**Amendment filter:** both `Company.get_filings(form='10-K')` and `Entity.get_filings(form='10-K')` return 10-K/A amendments alongside primary 10-Ks. Amendments are near-duplicates of the original filing (contaminate year-over-year signal). Added strict `f.form == '10-K'` filter to exclude them. Fixed ~65 firm-years of amendment contamination present in earlier extraction runs.
+
+**Cross-reference detection:** sections under 2,000 characters flagged via `is_cross_reference` column. Threshold set empirically from pilot analysis; pre-iXBRL filings systematically use references like "See pages 64-169" or "See Exhibit 99" for the substantive content.
 
 ## Pre-commitments on evaluation
 
@@ -212,6 +220,22 @@ Caveats named honestly:
 - Signal strength depends on the left tail (firms with the largest year-over-year textual change), not on the median. Tail firms exist in the pilot (GE 2023-2024, T 2021-2022) and correspond to real corporate events (GE's Aerospace/Vernova/HealthCare split, AT&T's WarnerMedia spin-off), not extraction artifacts. Whether tail firms predict returns is the actual research question, not answered by the prototype.
 - XOM's Item 7 is systematically cross-referenced and correctly excluded by the extractor; expect similar section-specific dropout across the full universe.
 
+## Corpus construction — final (2026-07-11)
+
+Universe: 1,448 firms (union of top-1000 across 6 year-end snapshots, 2018-2023).
+
+**CIK resolution** uses a merged SEC + CRSP-Compustat approach:
+- SEC's `company_tickers.json` gives current ticker→CIK mapping (77.1% coverage).
+- CRSP-Compustat path (PERMNO → CUSIP → gvkey → CIK via `comp.company`) recovers acquired/delisted firms preserved in Compustat with historical CIKs (+275 firms).
+- 17 disagreements between the two sources resolved via empirical validation: query SEC EDGAR for 10-K counts under each candidate CIK, pick whichever has filings in window (tiebreak: prefer CRSP historical entity).
+- Merged resolution: 1,392 firms (96.1%). 56 firms unresolvable by either source.
+
+**Extraction** uses `edgar.get_entity(cik).get_filings(form='10-K')` with strict `f.form == '10-K'` filter to exclude 10-K/A amendments. CIK-based routing (not ticker-based) required because some tickers moved between entities during the window (Sprint → SentinelOne after the T-Mobile merger).
+
+**Dependencies:** pandas ≥ 2.2 required for edgartools' section parsers (the `future.no_silent_downcasting` option, added in pandas 2.2, is used in some code paths).
+
+**Final corpus:** 1,369 firms, 7,359 filings, 21,932 section rows. Full iteration history in git log commits `d92e434`, `a091b08`, `f69ad47`, `e1ce819`.
+
 ## Next steps
 
 **Next session:** run `EdgartoolsSectionExtractor` on the full 6,286-filing corpus. Store extracted sections per (ticker, filing_date, section) to parquet. Report failure rate + cross-reference rate. Estimated 60-90 min extraction time based on per-filing parsing costs.
@@ -224,7 +248,7 @@ Caveats named honestly:
 
 Consolidated list of documented issues that a reviewer would appropriately flag, retained inline so future readers see the methodological trade-offs alongside the methodology.
 
-1. **Survivorship bias in CIK resolution.** 22.9% of the top-1000 union universe (331 firms) failed CIK resolution via SEC's `company_tickers.json`, which only contains currently-active tickers. Missing firms are almost all acquisitions or delistings during 2019-2024 (SIVB, CELG, CERN, TECD, and similar). This biases the sample toward survivors: the effect is directional against distressed and acquired firms, precisely the tail where CMN-style disclosure divergence might be strongest. A fix via CRSP-Compustat linking (PERMNO → gvkey → CIK through `comp.security`) was scoped at 30-50 minutes and deferred to a future robustness session; not blocking corpus expansion.
+1. **Survivorship bias in CIK resolution — SUBSTANTIALLY RESOLVED.** Initial SEC-based resolution failed 22.9% of the universe (331 firms) because `company_tickers.json` only maps current tickers. CRSP-Compustat linking (PERMNO → CUSIP → gvkey → CIK via `comp.company`) was implemented and merged with SEC resolution. Recovery: +275 acquired/delisted firms (TECD, CELG, CERN, MXIM, DNKN, SPLK, WP, FB, etc.) plus 8 ticker-recycling wins (AMTD → historical TD Ameritrade CIK, APC → historical Anadarko, etc.). Final universe resolution: 96.1% (see Corpus construction — final). Residual sample loss documented as items 8-11 below.
 
 2. **`Universe.as_of()` silently fails on non-trading days.** The universe module returns 0 rows without warning when passed a non-trading date (e.g., `2022-12-31` fell on a Saturday). Discovered when the initial `build_universe.py` returned 0-row snapshots for 2022 and 2023 year-ends. Worked around by using actual last trading days (2022-12-30, 2023-12-29). The underlying bug remains in `Universe.as_of()`; a proper fix (either raise on non-trading dates, or auto-align to nearest prior trading day) is deferred but noted for future infrastructure work.
 
@@ -237,3 +261,11 @@ Consolidated list of documented issues that a reviewer would appropriately flag,
 6. **Item 7A dropped from signal scope (empirical, not accidental).** Investigation showed Item 7A is systematically thin (boilerplate or cross-referenced) for large firms including JPM, NEE, JNJ, XOM — 40% of the pilot sample. Signal scope is Items 1, 1A, 7 only. This is a documented deviation from CMN's original methodology, empirically justified against the pilot distribution.
 
 7. **Pre-iXBRL filings excluded (2015-2018).** Investigation revealed pre-iXBRL 10-Ks systematically use cross-references. Sample window restricted to 2019-2024 (post-iXBRL mandate). Sample size reduced from a hypothetical ~5000-7500 firm-year observations to ~3500-4500. Documented deviation from CMN's original 1995-2014 window; our study is an out-of-sample extension, not a corrupted replication attempt.
+
+8. **Unresolvable firms (residual).** 56 firms (3.9% of universe) unresolvable by either SEC or CRSP-Compustat. These are firms whose corporate reorganizations moved both SEC and Compustat records to new CIKs with no filings in the 2019-2024 window (BLK, PNFP, OZK, LB, and others). Legitimate sample loss after CRSP-Compustat merge; not further recoverable without per-firm SEC EDGAR full-text search.
+
+9. **Zero-filing firms.** 15 firms with resolved CIK but no 10-Ks in the 2019-2024 window under that CIK. Includes firms whose acquisition or reorganization pre-dated the window (VVC, NFX, ATHN, IDTI, VSM, ESL, TSRO, LOXO, RYZB, FRC, SBNY) and firms whose current-entity CIK has yet to file (BLK, PNFP, OZK, LB). Documented sample loss.
+
+10. **Partial-section extractions.** 140 filings (1.9%) have only 1 or 2 of the 3 sections extracted rather than all 3. Cause: edgartools' HTMLParser has a fallback path (warning: `'NoneType' object has no attribute 'download'`) that occasionally produces incomplete section objects. Real edgartools quirk affecting specific filing formats; minor sample-quality impact given <2% incidence.
+
+11. **Corporate reorganization mid-window (8 firms).** For 8 firms with valid 10-Ks under both SEC-current and CRSP-historical CIKs (Sprint/SentinelOne, MTCH, COHR, CZR-tier), the merge picks CRSP CIK (pre-reorganization entity). Comparing pre-reorganization to post-reorganization text within one firm-year would corrupt the CMN signal. Downstream signal computation should either flag these firms or filter YoY pairs that straddle a reorganization event. The merged CIK file's `cik_source` column marks these as `both_valid_prefer_crsp`.
