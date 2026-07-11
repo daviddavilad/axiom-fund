@@ -1,0 +1,5 @@
+Run: 2026-07-11T19:52:41.376595
+Input: data/cache/lazy_prices_sections.parquet
+Input rows: 21932
+Signal rows: 17626
+Firms with signal: 1334
