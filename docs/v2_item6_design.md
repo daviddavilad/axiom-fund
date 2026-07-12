@@ -236,11 +236,54 @@ Universe: 1,448 firms (union of top-1000 across 6 year-end snapshots, 2018-2023)
 
 **Final corpus:** 1,369 firms, 7,359 filings, 21,932 section rows. Full iteration history in git log commits `d92e434`, `a091b08`, `f69ad47`, `e1ce819`.
 
+## Backtest scope (2026-07-12)
+
+Scoping session before running the portfolio-sort backtest surfaced two things worth documenting: (1) existing v2 backtest infrastructure is substantial and should be reused, not rebuilt; (2) the current `src/axiom_fund/signals/lazy_prices.py` module's output schema `(ticker, filing_year, prior_filing_year, section_id, similarity)` does not match the pre-committed signal-panel schema from `docs/signal_design.md` §2.1: `(date, permno, raw_signal, winsorized, z_score)`. Backtest execution deferred until the signal module is refactored to conform.
+
+**Signal module refactor required (next session)**
+
+Signal-schema mismatch has three fixable pieces:
+- Output `date` (filing_date or filing_date + 5-trading-day disclosure buffer) instead of `filing_year`
+- Output `permno` (via ticker lookup from `lazy_prices_ciks.parquet`) instead of `ticker`
+- Aggregate the three per-section similarities to a single `raw_signal = 1 - mean(similarity)` at the library level. This is a documented ad-hoc decision (equal weights across sections); CMN 2020 uses the same aggregation.
+
+The forward-fill carry rule ("until next 10-K filing," pre-committed at line 23 of this doc) is a portfolio-layer concern per `docs/signal_design.md` §2.1 and should be handled by extending `src/axiom_fund/signals/alignment.py`, not by the signal module itself.
+
+**Existing infrastructure to consume**
+
+- `src/axiom_fund/data/returns.py::ReturnsPanel.fetch()` — CRSP daily returns with delisting adjustment (Shumway 1997)
+- `src/axiom_fund/backtest/forward_returns.py::compute_forward_returns()` — holding-period forward returns per (rebalance_date, permno)
+- `src/axiom_fund/backtest/metrics.py::compute_performance_metrics()` — Sharpe with 95% CI, hit rate, drawdowns
+- `src/axiom_fund/backtest/engine.py::monthly_rebalance_dates()` — monthly rebalance calendar utility
+- `src/axiom_fund/signals/alignment.py` — signal-frequency alignment (extend for annual carry rather than build parallel logic)
+
+**Backtest methodology decisions**
+
+The following are pre-committed in this doc:
+- Portfolio: long-top-quintile, short-bottom-quintile, equal-weighted within quintile
+- Signal date: filing_date + 5 trading days (line 63, "look-ahead prevention")
+- Holding period: until next 10-K filing (~12 months, line 23)
+
+The following are ad-hoc decisions surfacing during scoping today, not pre-committed:
+- Section aggregation: equal-weighted mean of the three per-section similarities per firm-year
+- Universe filter at portfolio-formation time: any firm with a signal (no additional filter). CMN 2020 uses their full sample without further filter, so this is defensible but should be documented as a choice rather than treated as neutral.
+- Portfolio weighting inside each quintile: equal-weight for the base backtest. CMN 2020 reports both equal- and value-weighted; we defer value-weighted to a robustness pass.
+
+**Time estimate for the full pipeline (next 2 sessions)**
+
+- Signal module refactor + updated tests: ~60-90 min
+- Alignment-layer extension for annual carry rule: ~30-45 min
+- Backtest script (thin runner over existing infrastructure): ~45-60 min
+- Sharpe + hit rate + drawdown report + sanity checks: ~30-45 min
+- Bootstrap CI + HAC t-stat via existing Item 3 framework: ~45-60 min
+
+Total: ~3.5-5 hours across two sessions. Full success/failure evaluation against pre-commitments at line 94-104 lands at the end.
+
 ## Next steps
 
-**Next session:** run `EdgartoolsSectionExtractor` on the full 6,286-filing corpus. Store extracted sections per (ticker, filing_date, section) to parquet. Report failure rate + cross-reference rate. Estimated 60-90 min extraction time based on per-filing parsing costs.
+**Next session:** refactor `src/axiom_fund/signals/lazy_prices.py` output schema to conform to `docs/signal_design.md` §2.1 signal-panel contract (date, permno, raw_signal, winsorized, z_score). Update the 9 tests. Recompute the signal file. See Backtest scope (2026-07-12).
 
-**Following sessions:** build TF-IDF vectorization pipeline. Compute year-over-year cosine similarity per firm. Portfolio-sort backtest (long-top-quintile minus short-bottom-quintile). Findings document.
+**Following sessions:** extend `signals/alignment.py` with annual carry rule; write the backtest runner over existing infrastructure (`forward_returns.py`, `metrics.py`, `data/returns.py`); report Sharpe, hit rate, drawdowns, then bootstrap CI and HAC t-stat per success-criteria pre-commitment at line 94-104.
 
 **Later:** Item 6b (transformer extension). Item 6c (composite integration, conditional on 6a success).
 
