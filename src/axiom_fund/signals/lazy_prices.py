@@ -2,62 +2,82 @@
 
 Signal
 ------
-For each firm and each of {Item 1, Item 1A, Item 7} in the 10-K, compute
-year-over-year TF-IDF cosine similarity between consecutive-year filings.
+For each firm, at each 10-K filing date, compute the year-over-year
+TF-IDF cosine similarity between the current 10-K and the prior
+10-K, separately for Items 1, 1A, and 7. The three per-section
+similarities are averaged, and the raw signal is:
 
-Higher similarity → less textual change → CMN predicts *underperformance*
-subsequently (the "lazy" signal). The signal value reported here is the
-raw similarity; downstream (e.g. alignment layer) can transform to
-1 - similarity (change score) or z-score cross-sectionally as needed.
+    raw_signal = 1 - mean(sim_item1, sim_item1a, sim_item7)
 
-CMN's paper uses this per-section similarity as the signal input, computing
-portfolio sorts on 1 - similarity. See docs/v2_item6_design.md.
+Higher raw_signal → more textual change → CMN predicts subsequent
+*outperformance*. (CMN's headline finding is that "lazy" filings
+with LOW change underperform; the sign convention here maps
+directly onto that.)
+
+Per docs/signal_design.md §2.1: signals output at natural cadence.
+Lazy Prices natural cadence is per-10-K-filing. The portfolio layer
+(alignment) will forward-fill until the next filing per §2.1's
+frequency-alignment principle. Winsorization and cross-sectional
+z-scoring are alignment-layer concerns per the same section,
+revised 2026-04-26.
 
 Methodology
 -----------
-Pre-committed parameters (locked at pilot on 2026-07-06, see
+Pre-committed parameters (locked at July 6 pilot, see
 scripts/analysis/prototype_lazy_prices_signal.py):
 
-  - Per-section TF-IDF fit: each of Item 1, 1A, 7 has its own vocabulary
-    (they use different language and shouldn't share tokens).
+  - Per-section TF-IDF fit: each of Item 1, 1A, 7 has its own
+    vocabulary (they use different language and shouldn't share
+    tokens).
   - TfidfVectorizer(lowercase=True, stop_words='english', min_df=2,
                     token_pattern=r'(?u)\\b[a-zA-Z]{2,}\\b')
-    (letters only, 2+ characters, sklearn's default English stopwords,
-    words in ≥2 documents to drop hapaxes)
-  - Consecutive-year pairs only: year_curr - year_prev == 1 in filing_date.
-    Firms with fiscal shifts (multiple 10-Ks per calendar year) resolved
-    by keeping the latest 10-K per (ticker, year). 3 firms affected in
-    2019-2024 sample (SMCI 2019, SYM 2022, TLRY 2021).
-  - Cross-references dropped before fitting: sections flagged as
-    `is_cross_reference=True` in the extractor (typically Item 7 in
-    pre-iXBRL filings that reference exhibits).
+  - Consecutive-year pairs only: filing_year(current) -
+    filing_year(prior) == 1. Firms with fiscal shifts (multiple
+    10-Ks per calendar year) resolved by keeping the latest 10-K
+    per (permno, calendar year). 3 firms affected in 2019-2024
+    sample (SMCI 2019, SYM 2022, TLRY 2021).
+  - Cross-references dropped before fitting: sections flagged
+    `is_cross_reference=True` by the extractor (typically Item 7
+    in pre-iXBRL filings that reference exhibits).
+  - Aggregation across sections: equal-weighted mean. This is a
+    documented ad-hoc decision (see docs/v2_item6_design.md
+    "Backtest scope 2026-07-12"). CMN 2020 also uses equal-weighted
+    aggregation across sections.
 
-Output panel columns (in order):
-  ticker
-  filing_year   — calendar year of the current 10-K (year N)
-  prior_filing_year — calendar year of the prior 10-K (year N-1)
-  section_id    — one of "Item 1", "Item 1A", "Item 7"
-  similarity    — cosine similarity of TF-IDF vectors, ∈ [0, 1]
+Output panel columns (in order, matches LAZY_PRICES_RAW_COLUMNS):
+  permno
+  ticker              — audit trail (per GP's gvkey pattern)
+  date_filed          — filing_date of the current 10-K (PIT anchor)
+  prior_date_filed    — filing_date of the prior 10-K used for YoY
+  sim_item1           — component: Item 1 YoY cosine similarity
+  sim_item1a          — component: Item 1A YoY cosine similarity
+  sim_item7           — component: Item 7 YoY cosine similarity
+  raw_signal          — 1 - mean(sim_item1, sim_item1a, sim_item7)
 
-Deviation from other signals' convention
-----------------------------------------
-Unlike GP, PEAD, ResMom, IVol which take (start_date, end_date)
-parameters, this signal does not. The input sections corpus is already
-pre-filtered to the sample window (2019-2024) by the corpus construction
-pipeline; further windowing at compute time would produce inconsistent
-year-over-year pairs. Sample window is a corpus-level decision, not a
-compute-time choice.
+Components are retained per GP's pattern of preserving the constituent
+inputs for auditability.
 
-Keying is also different: (ticker, filing_year, section_id) rather than
-(permno, date_filed). Downstream alignment must handle this.
+NaN handling
+------------
+If a section is missing for a filing (cross-reference dropped, or
+section not extracted), that section's similarity is omitted from
+the mean. If ALL three sections are missing for either the current
+or prior filing, no signal row is emitted for that (permno, date_filed).
+
+Deviation from GP/PEAD/ResMom/IVol
+-----------------------------------
+No start_date/end_date parameters: the input sections corpus is
+already pre-filtered to the sample window (2019-2024) by the corpus
+construction pipeline; further windowing here would produce
+inconsistent year-over-year pairs.
 
 Usage
 -----
     from axiom_fund.signals.lazy_prices import compute_lazy_prices_signal
 
-    sections_df = pd.read_parquet("data/cache/lazy_prices_sections.parquet")
+    # sections_df must include a 'permno' column; the runner enriches
+    # from data/cache/lazy_prices_ciks.parquet before calling.
     raw = compute_lazy_prices_signal(sections_df)
-    # raw: (ticker, filing_year, prior_filing_year, section_id, similarity)
 """
 # ruff: noqa: I001
 
@@ -71,8 +91,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 LAZY_PRICES_SECTIONS = ["Item 1", "Item 1A", "Item 7"]
 
-# Pre-committed TF-IDF parameters (from July 6 pilot).
-# See scripts/analysis/prototype_lazy_prices_signal.py.
+# Column name suffix used to store per-section similarities.
+_SECTION_TO_COL = {
+    "Item 1": "sim_item1",
+    "Item 1A": "sim_item1a",
+    "Item 7": "sim_item7",
+}
+
+
+# Pre-committed TF-IDF parameters (July 6 pilot).
 _TFIDF_PARAMS = dict(
     lowercase=True,
     stop_words="english",
@@ -81,28 +108,43 @@ _TFIDF_PARAMS = dict(
 )
 
 
-LAZY_PRICES_COLUMNS = [
-    "ticker", "filing_year", "prior_filing_year", "section_id", "similarity",
-]
+LAZY_PRICES_RAW_COLUMNS: tuple[str, ...] = (
+    "permno",
+    "ticker",
+    "date_filed",
+    "prior_date_filed",
+    "sim_item1",
+    "sim_item1a",
+    "sim_item7",
+    "raw_signal",
+)
+
+
+REQUIRED_INPUT_COLUMNS = {
+    "permno", "ticker", "filing_date", "accession_no", "section_id",
+    "text", "is_cross_reference",
+}
 
 
 def compute_lazy_prices_signal(sections_df: pd.DataFrame) -> pd.DataFrame:
-    """Compute the raw Lazy Prices year-over-year similarity signal.
+    """Compute the raw Lazy Prices YoY similarity signal per firm-filing.
 
     Parameters
     ----------
     sections_df : pd.DataFrame
-        Extracted 10-K sections corpus. Must contain columns:
-        'ticker', 'filing_date', 'accession_no', 'section_id', 'text',
-        'is_cross_reference'.
-        Expected input: data/cache/lazy_prices_sections.parquet.
+        Extracted 10-K sections corpus, with permno enrichment.
+        Required columns: 'permno', 'ticker', 'filing_date',
+        'accession_no', 'section_id', 'text', 'is_cross_reference'.
+        Expected input: data/cache/lazy_prices_sections.parquet
+        joined with data/cache/lazy_prices_ciks.parquet for permno.
 
     Returns
     -------
     pd.DataFrame
-        Signal panel with columns matching LAZY_PRICES_COLUMNS. One row
-        per (ticker, filing_year, section_id) with a valid consecutive
-        year-over-year pair. Sorted by (section_id, ticker, filing_year).
+        Long-format raw signal panel sorted by (date_filed, permno)
+        with columns matching LAZY_PRICES_RAW_COLUMNS.
+        One row per (permno, date_filed) with at least one non-null
+        per-section similarity in both current and prior filing.
 
     Raises
     ------
@@ -112,9 +154,7 @@ def compute_lazy_prices_signal(sections_df: pd.DataFrame) -> pd.DataFrame:
     # ------------------------------------------------------------------
     # Input validation
     # ------------------------------------------------------------------
-    required_cols = {"ticker", "filing_date", "accession_no", "section_id",
-                     "text", "is_cross_reference"}
-    missing = required_cols - set(sections_df.columns)
+    missing = REQUIRED_INPUT_COLUMNS - set(sections_df.columns)
     if missing:
         raise ValueError(
             f"sections_df missing required columns: {sorted(missing)}"
@@ -125,30 +165,35 @@ def compute_lazy_prices_signal(sections_df: pd.DataFrame) -> pd.DataFrame:
     # Handle empty input early: pandas can lose columns on boolean-indexing
     # an empty DataFrame with dtype-object columns.
     if df.empty:
-        return pd.DataFrame(columns=LAZY_PRICES_COLUMNS)
+        return pd.DataFrame(columns=list(LAZY_PRICES_RAW_COLUMNS))
 
     # Drop cross-references (methodology from pilot)
     df = df[~df.is_cross_reference]
 
-    # Extract filing year for pairing
-    df["filing_year"] = pd.to_datetime(df["filing_date"]).dt.year
+    # Normalize filing_date to date type; add filing_year for pairing.
+    df["filing_date"] = pd.to_datetime(df["filing_date"])
+    df["filing_year"] = df["filing_date"].dt.year
 
     # Fiscal-shift handling: for firms with >1 filing per calendar year,
-    # keep only the LATEST accession per (ticker, year). See design doc
-    # limitation 11 and this session's decision (2026-07-11).
+    # keep only the LATEST accession per (permno, year). See design doc
+    # limitation 11 and Backtest scope (2026-07-12).
     latest_per_year = (
         df.sort_values("filing_date")
-        .groupby(["ticker", "filing_year"], as_index=False)
+        .groupby(["permno", "filing_year"], as_index=False)
         .accession_no.last()
     )
     df = df.merge(
-        latest_per_year, on=["ticker", "filing_year", "accession_no"]
+        latest_per_year, on=["permno", "filing_year", "accession_no"]
     )
 
     # ------------------------------------------------------------------
     # Per-section similarity computation
     # ------------------------------------------------------------------
-    all_results: list[dict] = []
+    # Build a dict keyed on (permno, filing_year, section) -> similarity
+    # of current filing vs. prior year. Then aggregate to
+    # (permno, date_filed) rows.
+
+    per_pair_rows: list[dict] = []
 
     for section in LAZY_PRICES_SECTIONS:
         section_df = df[df.section_id == section].reset_index(drop=True)
@@ -159,16 +204,19 @@ def compute_lazy_prices_signal(sections_df: pd.DataFrame) -> pd.DataFrame:
         vectorizer = TfidfVectorizer(**_TFIDF_PARAMS)
         tfidf = vectorizer.fit_transform(section_df["text"].tolist())
 
-        # For each ticker with >1 filing, compute consecutive-year pairs
+        # For each permno with >1 filing in this section, compute
+        # consecutive-year pair similarities.
         section_df["row_idx"] = section_df.index
-        for ticker in section_df.ticker.unique():
-            ticker_df = section_df[section_df.ticker == ticker].sort_values(
+        for permno in section_df.permno.unique():
+            firm_df = section_df[section_df.permno == permno].sort_values(
                 "filing_year"
             )
-            if len(ticker_df) < 2:
+            if len(firm_df) < 2:
                 continue
-            years = ticker_df.filing_year.values
-            row_idxs = ticker_df.row_idx.values
+            years = firm_df.filing_year.values
+            dates = firm_df.filing_date.values
+            row_idxs = firm_df.row_idx.values
+            ticker = firm_df.ticker.iloc[0]
             for i in range(len(years) - 1):
                 y1, y2 = int(years[i]), int(years[i + 1])
                 if y2 - y1 != 1:
@@ -178,19 +226,47 @@ def compute_lazy_prices_signal(sections_df: pd.DataFrame) -> pd.DataFrame:
                         tfidf[row_idxs[i]], tfidf[row_idxs[i + 1]]
                     )[0, 0]
                 )
-                all_results.append({
+                per_pair_rows.append({
+                    "permno": permno,
                     "ticker": ticker,
-                    "filing_year": y2,
-                    "prior_filing_year": y1,
-                    "section_id": section,
+                    "date_filed": pd.Timestamp(dates[i + 1]),
+                    "prior_date_filed": pd.Timestamp(dates[i]),
+                    "section_col": _SECTION_TO_COL[section],
                     "similarity": sim,
                 })
 
-    if not all_results:
-        return pd.DataFrame(columns=LAZY_PRICES_COLUMNS)
+    if not per_pair_rows:
+        return pd.DataFrame(columns=list(LAZY_PRICES_RAW_COLUMNS))
 
-    signal_df = pd.DataFrame(all_results)[LAZY_PRICES_COLUMNS]
-    signal_df = signal_df.sort_values(
-        ["section_id", "ticker", "filing_year"]
-    ).reset_index(drop=True)
-    return signal_df
+    # ------------------------------------------------------------------
+    # Aggregate per-section rows to (permno, date_filed) signal rows
+    # ------------------------------------------------------------------
+    long_df = pd.DataFrame(per_pair_rows)
+    wide = long_df.pivot_table(
+        index=["permno", "ticker", "date_filed", "prior_date_filed"],
+        columns="section_col",
+        values="similarity",
+        aggfunc="first",
+    ).reset_index()
+
+    # Ensure all three section columns exist even if no data for one.
+    for col in ("sim_item1", "sim_item1a", "sim_item7"):
+        if col not in wide.columns:
+            wide[col] = pd.NA
+
+    # raw_signal = 1 - row-wise mean of the 3 section similarities.
+    # If all three are NaN, raw_signal is NaN (and row will be dropped).
+    sim_cols = ["sim_item1", "sim_item1a", "sim_item7"]
+    wide["raw_signal"] = 1.0 - wide[sim_cols].mean(axis=1, skipna=True)
+
+    # Drop rows where raw_signal couldn't be computed (all 3 sections NaN).
+    wide = wide[wide["raw_signal"].notna()]
+
+    # Sort and column-order per LAZY_PRICES_RAW_COLUMNS.
+    result = (
+        wide[list(LAZY_PRICES_RAW_COLUMNS)]
+        .sort_values(["date_filed", "permno"])
+        .reset_index(drop=True)
+    )
+    result.columns.name = None
+    return result

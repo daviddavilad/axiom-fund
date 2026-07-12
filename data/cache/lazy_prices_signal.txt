@@ -1,5 +1,6 @@
-Run: 2026-07-11T19:52:41.376595
-Input: data/cache/lazy_prices_sections.parquet
-Input rows: 21932
-Signal rows: 17626
-Firms with signal: 1334
+Run: 2026-07-12T20:35:24.538581
+Sections input: data/cache/lazy_prices_sections.parquet
+CIKs input: data/cache/lazy_prices_ciks_merged_dedup.parquet
+Signal rows: 5998
+Firms with signal: 1339
+Schema: ['permno', 'ticker', 'date_filed', 'prior_date_filed', 'sim_item1', 'sim_item1a', 'sim_item7', 'raw_signal']
