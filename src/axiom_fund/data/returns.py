@@ -200,8 +200,24 @@ class ReturnsPanel:
             ORDER BY permno, date;
         """
         params: dict[str, str] = {"start_date": start_date, "end_date": end_date}
+        # NOTE: pd.read_sql fails on SQLAlchemy 1.4 + pandas 2.3 with
+        # `TypeError: Query must be a string unless using sqlalchemy`.
+        # WRDS pins SQLAlchemy 1.4; pandas 2.3 requires 2.x for text() +
+        # read_sql. Workaround: execute + fetchall + DataFrame(). Same
+        # pattern applied in _fetch_delisting_returns. Full fix (upgrade
+        # or refactor) deferred to test-cleanup session.
         with self._db.engine.connect() as conn:
-            df = pd.read_sql(text(sql), conn, params=params)
+            result = conn.execute(text(sql), params)
+            df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # Coerce Decimal columns to float (fetchall returns Decimal for
+            # numeric SQL types; pd.read_sql would have coerced these).
+            for col in df.select_dtypes(include="object").columns:
+                if col == "permno":
+                    continue
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
         return df
 
     def _fetch_delisting_returns(
@@ -230,7 +246,17 @@ class ReturnsPanel:
         """
         params: dict[str, str] = {"start_date": start_date, "end_date": end_date}
         with self._db.engine.connect() as conn:
-            df = pd.read_sql(text(sql), conn, params=params)
+            result = conn.execute(text(sql), params)
+            df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # Coerce Decimal columns to float (fetchall returns Decimal for
+            # numeric SQL types; pd.read_sql would have coerced these).
+            for col in df.select_dtypes(include="object").columns:
+                if col == "permno":
+                    continue
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
         return df
 
     @staticmethod
