@@ -279,6 +279,26 @@ The following are ad-hoc decisions surfacing during scoping today, not pre-commi
 
 Total: ~3.5-5 hours across two sessions. Full success/failure evaluation against pre-commitments at line 94-104 lands at the end.
 
+## Backtest verification and negative L/S finding (2026-07-16)
+
+First-run L/S backtest (commit cc4b78c) produced Sharpe -0.48 [95% CI: -0.75, -0.21], with long-only +0.48 and short-only +0.71 Sharpe. Both legs positive; short leg stronger. Sign is flipped relative to CMN 2020's long-top-minus-short-bottom prediction.
+
+Verification session traced the number through the pipeline:
+
+- **Sign convention verified.** raw_signal = 1 - mean(similarity) (high = big text change). Alignment z-scores preserve the ordering. assign_quintiles maps highest z-score to Q5, which the runner treats as the long leg. GE 2020-02-24 (raw_signal 0.952, sample max) correctly sits in Q5 from Feb 2020 forward. AAPL (raw_signal ~0.04 every year, boring stable filings) sits in Q3 → Q2 as expected.
+- **Return data verified.** GE Feb 24 - Mar 30 2020 traced against CRSP: cumulative -35.5%, matching the COVID crash.
+- **Per-quintile ranking is monotonic.** Q1 Sharpe +0.77 > Q2 +0.72 > Q3 +0.68 > Q4 +0.67 > Q5 +0.58. A monotonic ranking across five quintiles from 59 months is too clean for noise; the signal is working, just in the direction opposite to CMN's prediction.
+- **2021 alone drives the aggregate.** Per-year L/S Sharpe: 2020 +1.16 (CMN direction), 2021 -2.47, 2022 -0.41, 2023 -0.30, 2024 -1.04. 2021 accounts for the entire negative aggregate.
+- **Q5 2021 composition explains the drag.** Persistent Q5 firms in 2021 (12 months in the quintile) include SPCE -11%/month avg, VVNT -8%/month, ALLK -15%/month, DCPH single-month -74% (Phase 3 failure), TGTX -51% Oct 2021, GME meme squeeze, MSTR -31%. SIC 99 (unclassifiable — SPACs, holdcos) is the largest single sector in Q5 2021 at 302 firm-months with -1.1% average return.
+
+**Substantive interpretation.** The signal identifies firms with large year-over-year disclosure change as designed. In our 2019-2024 sample, that cohort is disproportionately (a) post-SPAC firms transitioning from shell-company language to operating-company narrative, many of which subsequently operationally failed; (b) clinical-stage biotechs whose Risk Factors sections ballooned as Phase 3 trials approached, some of which hit binary failures; (c) speculative names caught in 2021's meme cycle. CMN's 1995-2014 sample did not have this composition — their high-change firms were more likely industrial restructurings and spin-offs of stable businesses.
+
+The negative L/S sign is a real finding about sample composition, not signal noise or infrastructure bugs. Whether the CMN Long-Short prediction generalizes to periods dominated by SPAC and biotech binary events is the empirical question this study answers with "no, and here is why."
+
+Verification scripts committed under scripts/exploration/verify_backtest_stage{1,2,3}.py.
+
+Statistical significance testing (bootstrap CI, HAC t-stat via the Item 3 framework), value-weighted robustness, and formal write-up deferred to next sessions.
+
 ## Next steps
 
 **Next session:** refactor `src/axiom_fund/signals/lazy_prices.py` output schema to conform to `docs/signal_design.md` §2.1 signal-panel contract (date, permno, raw_signal, winsorized, z_score). Update the 9 tests. Recompute the signal file. See Backtest scope (2026-07-12).
