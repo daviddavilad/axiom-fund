@@ -299,6 +299,32 @@ Verification scripts committed under scripts/exploration/verify_backtest_stage{1
 
 Statistical significance testing (bootstrap CI, HAC t-stat via the Item 3 framework), value-weighted robustness, and formal write-up deferred to next sessions.
 
+## Significance testing and metrics.py bug fix (2026-07-17)
+
+Follow-up statistical significance testing on the L/S monthly return series (N=59) via `scripts/analysis/lazy_prices_significance.py` produced two substantive findings.
+
+**1. Neither L/S nor either leg is statistically distinguishable from zero.**
+
+HAC-corrected t-stat for the mean L/S return via Newey-West standard error, tested at lags 4, 6, 8: t-stats -1.08, -1.11, -1.10; p-values 0.28, 0.27, 0.27. Stable across lag choices; autocorrelation is not adding materially to variance.
+
+Stationary block-bootstrap 95% CI for the L/S Sharpe (10,000 resamples, seed 42), across block sizes 3, 4, 6, 8: [-1.45, +0.41], [-1.53, +0.41], [-1.45, +0.31], [-1.41, +0.28]. All four include zero. Stable across block sizes.
+
+**2. src/axiom_fund/backtest/metrics.py::compute_sharpe had a bug.**
+
+The Lo (2002) asymptotic SE formula is `Var(SR_p) ≈ (1 + 0.5·SR_p²) / T` for the PERIODIC Sharpe SR_p. The code applied this formula directly to the ANNUALIZED Sharpe SR_a. Since `SR_a = √q · SR_p` where q = periods_per_year, the correct annualized SE is `SE(SR_a) = √((q + 0.5·SR_a²) / T)`. Applying the periodic formula to the annualized value under-stated SE by a factor of ~√q. Fixed by replacing `1` with `periods_per_year` in the SE expression. All 25 metrics tests still pass under the fix.
+
+**Corrected first-run backtest CIs (compare to Backtest verification 2026-07-16 above):**
+
+- Long-only:  Sharpe +0.48 [-0.41, +1.37]  (was [+0.21, +0.75])
+- Short-only: Sharpe +0.71 [-0.18, +1.61]  (was [+0.43, +1.00])
+- Long-Short: Sharpe -0.48 [-1.37, +0.41]  (was [-0.75, -0.21])
+
+All three legs now include zero. The corrected asymptotic CI agrees with HAC + bootstrap.
+
+**Substantive conclusion.** The compositional finding from 2026-07-16 stands: Q5 in 2019-2024 is dominated by post-SPAC operational failures and clinical-stage biotech binary events, and the point estimate for L/S is negative because those firms crashed. But with N=59 months, we cannot claim statistical significance for the L/S effect (or for either leg individually). The honest research statement is: "The point estimate suggests the CMN sign reverses in a sample dominated by SPAC and biotech binary events. The sample is too small to reject H0: L/S mean = 0 with confidence. Longer horizons or replication study needed to distinguish real out-of-sample sign flip from sampling noise at this cross-section composition."
+
+**Spillover to prior work.** Prior asymptotic Sharpe CIs quoted in v1 documents (docs/onepager.md, docs/holdout_test_results.md) were affected by the same bug. `docs/v2_diagnostics_findings.md` already acknowledged that Item 1 asymptotic CIs understated uncertainty and directed readers to Item 3's bootstrap Sharpe CIs as authoritative; that acknowledgment remains correct. The metrics.py fix here removes the specific formula error going forward; v1 asymptotic CIs remain reported as they were computed at the time.
+
 ## Next steps
 
 **Next session:** refactor `src/axiom_fund/signals/lazy_prices.py` output schema to conform to `docs/signal_design.md` §2.1 signal-panel contract (date, permno, raw_signal, winsorized, z_score). Update the 9 tests. Recompute the signal file. See Backtest scope (2026-07-12).

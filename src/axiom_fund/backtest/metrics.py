@@ -200,8 +200,14 @@ def compute_sharpe(
     Uses geometric return in the numerator, arithmetic vol in the
     denominator. Risk-free rate is in annualized form (e.g., 0.04 for 4%).
 
-    Confidence interval via Lo (2002) asymptotic standard error:
-        SE(SR) ≈ √((1 + 0.5 × SR²) / N)
+    Confidence interval via Lo (2002) asymptotic standard error, scaled
+    to the annualized Sharpe. For periodic Sharpe SR_p, Lo gives
+        Var(SR_p) ≈ (1 + 0.5 × SR_p²) / T.
+    Since SR_annual = q × SR_p with q = √periods_per_year:
+        SE(SR_annual) = √((q² + 0.5 × SR_annual²) / T)
+                      = √((periods_per_year + 0.5 × SR_annual²) / T).
+    (Prior to 2026-07-17 this used (1 + 0.5 × SR²)/T on the annualized
+    SR — a bug that under-stated SE by a factor of q.)
     """
     if len(returns) < 2:
         return SharpeResult(
@@ -226,7 +232,7 @@ def compute_sharpe(
 
     sr = (ann_return - risk_free_rate) / ann_vol
     n = len(returns)
-    se = float(np.sqrt((1 + 0.5 * sr**2) / n))
+    se = float(np.sqrt((periods_per_year + 0.5 * sr**2) / n))
     return SharpeResult(
         sharpe=float(sr),
         standard_error=se,

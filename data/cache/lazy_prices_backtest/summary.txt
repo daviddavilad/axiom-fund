@@ -1,8 +1,8 @@
-Run: 2026-07-14T02:05:59.516520
+Run: 2026-07-18T14:07:18.935756
 Rebalance dates: 72
 L/S N months: 59
 L/S Sharpe: -0.4771
-L/S Sharpe 95% CI: [-0.7464, -0.2078]
+L/S Sharpe 95% CI: [-1.3652, 0.4111]
 L/S annualized return: -0.0310
 L/S annualized vol: 0.0650
 L/S hit rate: 0.3898
