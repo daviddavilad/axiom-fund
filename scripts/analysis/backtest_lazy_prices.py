@@ -30,6 +30,7 @@ Outputs:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from datetime import datetime
@@ -54,10 +55,7 @@ SIGNAL_PATH = Path("data/cache/lazy_prices_signal.parquet")
 UNIVERSE_PATH = Path("data/cache/lazy_prices_universe.parquet")
 RETURNS_CACHE = Path("data/cache/lazy_prices_returns_daily.parquet")
 
-OUTPUT_DIR = Path("data/cache/lazy_prices_backtest")
-MONTHLY_RETURNS_PATH = OUTPUT_DIR / "monthly_returns.parquet"
-POSITIONS_PATH = OUTPUT_DIR / "quintile_positions.parquet"
-SUMMARY_PATH = OUTPUT_DIR / "summary.txt"
+# Output paths built in main() based on weighting mode
 
 # Rebalance calendar: month-end dates 2019-01 through 2024-12
 REBALANCE_START = "2019-01-31"
@@ -113,6 +111,28 @@ def _build_universe_panel(
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Lazy Prices L/S backtest"
+    )
+    parser.add_argument(
+        "--value-weighted",
+        action="store_true",
+        help="Value-weight legs by market cap at rebalance date "
+        "(default: equal-weight)",
+    )
+    args = parser.parse_args()
+
+    # Output paths + label depend on weighting mode
+    if args.value_weighted:
+        output_dir = Path("data/cache/lazy_prices_backtest_vw")
+        weighting_label = "value-weighted"
+    else:
+        output_dir = Path("data/cache/lazy_prices_backtest")
+        weighting_label = "equal-weighted"
+    monthly_returns_path = output_dir / "monthly_returns.parquet"
+    positions_path = output_dir / "quintile_positions.parquet"
+    summary_path = output_dir / "summary.txt"
+
     for path in (SIGNAL_PATH, UNIVERSE_PATH):
         if not path.exists():
             print(f"ERROR: {path} not found.", file=sys.stderr)
@@ -171,23 +191,40 @@ def main() -> int:
     print(f"  {len(fwd):,} forward-return rows")
 
     # L/S portfolio
-    print("Computing L/S portfolio returns...")
-    ls_returns = compute_long_short_returns(quintiles, fwd, n_quintiles=5)
+    print(f"Computing L/S portfolio returns ({weighting_label})...")
+    if args.value_weighted:
+        # Weights = market cap at each rebalance date
+        weights_df = (
+            returns.loc[
+                returns["date"].isin(rebalance_dates),
+                ["date", "permno", "marketcap"],
+            ]
+            .rename(columns={"marketcap": "weight"})
+            .copy()
+        )
+        print(f"  Weight rows: {len(weights_df):,}")
+        ls_returns = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=weights_df,
+        )
+    else:
+        ls_returns = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5
+        )
     print(f"  {len(ls_returns):,} monthly return rows")
 
     # Save monthly return artifact
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ls_returns.to_parquet(MONTHLY_RETURNS_PATH, index=False)
-    print(f"Saved: {MONTHLY_RETURNS_PATH}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ls_returns.to_parquet(monthly_returns_path, index=False)
+    print(f"Saved: {monthly_returns_path}")
 
     # Also save quintile positions for downstream analysis
-    quintiles.to_parquet(POSITIONS_PATH, index=False)
-    print(f"Saved: {POSITIONS_PATH}")
+    quintiles.to_parquet(positions_path, index=False)
+    print(f"Saved: {positions_path}")
 
     # Performance metrics
     print()
     print("=" * 70)
-    print("Performance summary")
+    print(f"Performance summary ({weighting_label})")
     print("=" * 70)
 
     ls_series = ls_returns.set_index("date")["ls_return"].dropna()
@@ -212,8 +249,9 @@ def main() -> int:
     _print_metrics("Long-Short", ls_metrics, ls_series)
 
     # Metadata summary
-    with open(SUMMARY_PATH, "w") as f:
+    with open(summary_path, "w") as f:
         f.write(f"Run: {datetime.now().isoformat()}\n")
+        f.write(f"Weighting: {weighting_label}\n")
         f.write(f"Rebalance dates: {len(rebalance_dates)}\n")
         f.write(f"L/S N months: {len(ls_series)}\n")
         f.write(f"L/S Sharpe: {ls_metrics.sharpe.sharpe:.4f}\n")
@@ -224,7 +262,7 @@ def main() -> int:
         f.write(f"L/S hit rate: {ls_metrics.hit_rate:.4f}\n")
         f.write(f"L/S max drawdown: {ls_metrics.max_drawdown:.4f}\n")
 
-    print(f"\nSummary written to: {SUMMARY_PATH}")
+    print(f"\nSummary written to: {summary_path}")
     return 0
 
 

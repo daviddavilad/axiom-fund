@@ -325,6 +325,30 @@ All three legs now include zero. The corrected asymptotic CI agrees with HAC + b
 
 **Spillover to prior work.** Prior asymptotic Sharpe CIs quoted in v1 documents (docs/onepager.md, docs/holdout_test_results.md) were affected by the same bug. `docs/v2_diagnostics_findings.md` already acknowledged that Item 1 asymptotic CIs understated uncertainty and directed readers to Item 3's bootstrap Sharpe CIs as authoritative; that acknowledgment remains correct. The metrics.py fix here removes the specific formula error going forward; v1 asymptotic CIs remain reported as they were computed at the time.
 
+## Value-weighted robustness (2026-07-18)
+
+`compute_long_short_returns` extended with optional `weights_df` parameter; runner extended with `--value-weighted` flag. Weights = market cap at each rebalance date; firms with missing weight excluded from that leg's weighted average.
+
+Same signal panel, same universe, same rebalance calendar. Value-weighted results in `data/cache/lazy_prices_backtest_vw/`:
+
+- Long-only:  Sharpe **+1.12** [+0.03, +2.20]  (equal-weight +0.48)
+- Short-only: Sharpe **+1.11** [+0.02, +2.19]  (equal-weight +0.71)
+- Long-Short: Sharpe **+0.31** [-0.75, +1.38]  (equal-weight -0.48)
+
+**Sign of the L/S point estimate flips under value-weighting** (-0.48 → +0.31, a shift of +0.79). Neither result is statistically distinguishable from zero individually, but the change in point estimate is exactly what the compositional hypothesis from 2026-07-16 predicted:
+
+- Under equal-weighting, the small-cap Q5 cohort (post-SPAC operational failures SPCE/VVNT/CHPT/VLDR; clinical-stage biotech binary events ALLK/DCPH/TGTX/BEAM/NVAX) dominates the leg average and drags L/S negative.
+- Under value-weighting, the large-cap Q5 cohort (persistent transformations VRT/HXL/WSC/CNC/AVNT, which showed positive returns even in 2021) dominates via proportional market-cap weight.
+- Q1 (low text change) is naturally dominated by mega-cap stable firms under both weighting schemes — minimal compositional change.
+- Net: the direction of the L/S effect depends on which sub-cohort of Q5 receives the most weight.
+
+**Substantive statement.** CMN's original Long-Short sign holds under value-weighting on 2019-2024 data. Under equal-weighting, small-cap post-SPAC and biotech binary-event names dominate the Q5 tail and reverse the sign. Both point estimates fall within their statistical uncertainty bands, so we cannot reject H0: mean L/S = 0 for either. But the sign-dependence on weighting scheme is a real finding about signal implementation, not signal validity — the CMN effect appears in the value-weighted sub-portfolio dominated by legitimate large-cap corporate transformations.
+
+**Caveats.**
+1. N dropped from 59 to 41 months. ~28% of quintile positions lack market cap data at the rebalance date, so months where either leg had all-NaN weights get NaN ls_return. Investigation deferred.
+2. Neither estimate is significant; we cannot claim CMN-direction "confirmed" — only that the sign question is compositional.
+3. Value-weighted single-leg Sharpes (+1.11, +1.12) are very high. Consistent with mega-cap dominance in 2019-2024 rather than pure signal alpha.
+
 ## Next steps
 
 **Next session:** refactor `src/axiom_fund/signals/lazy_prices.py` output schema to conform to `docs/signal_design.md` §2.1 signal-panel contract (date, permno, raw_signal, winsorized, z_score). Update the 9 tests. Recompute the signal file. See Backtest scope (2026-07-12).

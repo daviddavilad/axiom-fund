@@ -179,3 +179,179 @@ class TestComputeLongShort:
         fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
         result = compute_long_short_returns(quintiles, fwd)
         assert tuple(result.columns) == LS_RETURN_COLUMNS
+
+def _weights(
+    date: str,
+    permnos: list[int],
+    weights: list[float],
+) -> pd.DataFrame:
+    return pd.DataFrame({
+        "date": pd.to_datetime([date] * len(permnos)),
+        "permno": permnos,
+        "weight": weights,
+    })
+
+
+# ============================================================================
+# compute_long_short_returns — value-weighted
+# ============================================================================
+
+
+class TestValueWeightedLongShort:
+    def test_value_weighted_leg_math(self):
+        # 10 firms z 1..10; long = permnos 108, 109; short = 100, 101
+        # Returns: 108=5%, 109=10%; 100=2%, 101=8%
+        # Weights: 108=100, 109=300 -> long_w_avg = (100*.05+300*.10)/400 = 0.0875
+        # Weights: 100=50, 101=150 -> short_w_avg = (50*.02+150*.08)/200 = 0.065
+        # ls = 0.0875 - 0.065 = 0.0225
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.08
+        returns_by_permno[108] = 0.05
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        weights_by_permno = {p: 100.0 for p in permnos}
+        weights_by_permno[100] = 50.0
+        weights_by_permno[101] = 150.0
+        weights_by_permno[108] = 100.0
+        weights_by_permno[109] = 300.0
+        wts = _weights(
+            "2020-06-30",
+            permnos,
+            [weights_by_permno[p] for p in permnos],
+        )
+        result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=wts
+        )
+        row = result.iloc[0]
+        assert row.long_return == pytest.approx(0.0875)
+        assert row.short_return == pytest.approx(0.065)
+        assert row.ls_return == pytest.approx(0.0225)
+        assert row.n_long == 2
+        assert row.n_short == 2
+
+    def test_uniform_weights_equal_equal_weighted(self):
+        # Weights all 1.0 -> weighted average equals simple mean
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.02
+        returns_by_permno[108] = 0.10
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        wts = _weights("2020-06-30", permnos, [1.0] * 10)
+        eq_result = compute_long_short_returns(quintiles, fwd, n_quintiles=5)
+        vw_result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=wts
+        )
+        assert vw_result.iloc[0].long_return == pytest.approx(
+            eq_result.iloc[0].long_return
+        )
+        assert vw_result.iloc[0].short_return == pytest.approx(
+            eq_result.iloc[0].short_return
+        )
+        assert vw_result.iloc[0].ls_return == pytest.approx(
+            eq_result.iloc[0].ls_return
+        )
+
+    def test_missing_weight_excluded(self):
+        # Long leg has 2 firms (108, 109); permno 108 has NaN weight
+        # -> only 109 counted in weighted mean, n_long=1
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        weights_list = [100.0] * 10
+        weights_list[permnos.index(108)] = float("nan")
+        wts = _weights("2020-06-30", permnos, weights_list)
+        result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=wts
+        )
+        assert result.iloc[0].n_long == 1
+        assert result.iloc[0].long_return == pytest.approx(0.05)
+
+    def test_all_missing_weights_yields_nan_leg(self):
+        # Both long-leg firms have NaN weight -> long_return NaN, n_long=0
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        weights_list = [100.0] * 10
+        weights_list[permnos.index(108)] = float("nan")
+        weights_list[permnos.index(109)] = float("nan")
+        wts = _weights("2020-06-30", permnos, weights_list)
+        result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=wts
+        )
+        assert result.iloc[0].n_long == 0
+        assert pd.isna(result.iloc[0].long_return)
+
+    def test_zero_total_weight_yields_nan(self):
+        # All long-leg weights are 0.0 -> degenerate; long_return NaN
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        weights_list = [100.0] * 10
+        weights_list[permnos.index(108)] = 0.0
+        weights_list[permnos.index(109)] = 0.0
+        wts = _weights("2020-06-30", permnos, weights_list)
+        result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, weights_df=wts
+        )
+        assert pd.isna(result.iloc[0].long_return)
+
+    def test_negative_weight_raises(self):
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        weights_list = [100.0] * 10
+        weights_list[0] = -50.0
+        wts = _weights("2020-06-30", permnos, weights_list)
+        with pytest.raises(ValueError, match="negative-weight"):
+            compute_long_short_returns(
+                quintiles, fwd, n_quintiles=5, weights_df=wts
+            )
+
+    def test_weights_missing_columns_raises(self):
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal(
+            "2020-06-30", permnos, [float(z) for z in range(1, 11)]
+        )
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        bad_wts = pd.DataFrame({
+            "date": pd.to_datetime(["2020-06-30"] * 10),
+            "permno": permnos,
+            # missing 'weight' column
+        })
+        with pytest.raises(ValueError, match="weights_df missing"):
+            compute_long_short_returns(
+                quintiles, fwd, n_quintiles=5, weights_df=bad_wts
+            )

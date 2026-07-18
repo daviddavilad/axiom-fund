@@ -118,11 +118,19 @@ def compute_long_short_returns(
     quintiles_df: pd.DataFrame,
     forward_returns_df: pd.DataFrame,
     n_quintiles: int = 5,
+    weights_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Compute equal-weighted L/S portfolio return per rebalance date.
+    """Compute L/S portfolio return per rebalance date.
 
     Long leg = top quintile (highest z_score). Short leg = bottom quintile.
-    Both legs equal-weighted. ls_return = long_return - short_return.
+    ls_return = long_return - short_return.
+
+    Weighting scheme:
+      - weights_df=None (default): equal-weighted within each leg.
+      - weights_df provided: value-weighted using the 'weight' column
+        (typically market cap at the rebalance date). Firms with NaN
+        weight are excluded from that leg's weighted average. Weights
+        within each (date, quintile) are normalized to sum to 1.
 
     Firms in a quintile but with no forward return in forward_returns_df
     are dropped from that quintile's average.
@@ -135,21 +143,21 @@ def compute_long_short_returns(
         Output of compute_forward_returns. Columns: 'rebalance_date',
         'permno', 'fwd_return'.
     n_quintiles : int, default 5
-        Must match the number used in assign_quintiles. Determines
-        which quintile is "top" for the long leg.
+        Must match the number used in assign_quintiles.
+    weights_df : pd.DataFrame | None, default None
+        Optional weights panel. When provided, must have columns
+        'date', 'permno', 'weight'. Weights must be non-negative.
 
     Returns
     -------
     pd.DataFrame
-        One row per rebalance date with columns matching LS_RETURN_COLUMNS:
-        (date, long_return, short_return, ls_return, n_long, n_short).
-        Sorted by date. Dates with an empty long or short quintile get
-        NaN for that leg's return and 0 for its count.
+        One row per rebalance date with LS_RETURN_COLUMNS.
 
     Raises
     ------
     ValueError
-        If required columns are missing or n_quintiles < 2.
+        If required columns missing, n_quintiles < 2, or weights_df
+        contains negative weights.
     """
     q_required = {"date", "permno", "quintile"}
     fr_required = {"rebalance_date", "permno", "fwd_return"}
@@ -164,6 +172,19 @@ def compute_long_short_returns(
     if n_quintiles < 2:
         raise ValueError(f"n_quintiles must be >= 2, got {n_quintiles}")
 
+    if weights_df is not None:
+        w_required = {"date", "permno", "weight"}
+        w_missing = w_required - set(weights_df.columns)
+        if w_missing:
+            raise ValueError(
+                f"weights_df missing columns: {sorted(w_missing)}"
+            )
+        neg = weights_df["weight"].dropna() < 0
+        if neg.any():
+            raise ValueError(
+                f"weights_df has {int(neg.sum())} negative-weight rows"
+            )
+
     if quintiles_df.empty or forward_returns_df.empty:
         return pd.DataFrame(columns=list(LS_RETURN_COLUMNS))
 
@@ -174,25 +195,49 @@ def compute_long_short_returns(
         how="left",
     )
 
-    # Drop rows without a forward return (firm was in universe but had no
-    # return data — e.g., delisted, missing CRSP row).
+    # Drop rows without a forward return
     merged = merged[merged["fwd_return"].notna()]
+
+    # Merge weights if provided
+    if weights_df is not None:
+        merged = merged.merge(
+            weights_df[["date", "permno", "weight"]],
+            on=["date", "permno"],
+            how="left",
+        )
 
     top_q = float(n_quintiles)
     bot_q = 1.0
+    use_weights = weights_df is not None
+
+    def _leg_return(leg: pd.DataFrame) -> tuple[float, int]:
+        """Return (leg_return, n_firms) for one quintile within a date."""
+        if len(leg) == 0:
+            return np.nan, 0
+        if not use_weights:
+            return float(leg["fwd_return"].mean()), len(leg)
+        # Value-weighted path: drop firms with NaN weight
+        weighted = leg.dropna(subset=["weight"])
+        if len(weighted) == 0:
+            return np.nan, 0
+        total_w = float(weighted["weight"].sum())
+        if total_w == 0.0:
+            return np.nan, len(weighted)
+        w = weighted["weight"] / total_w
+        return float((w * weighted["fwd_return"]).sum()), len(weighted)
 
     def _per_date(group: pd.DataFrame) -> pd.Series:
-        longs = group[group["quintile"] == top_q]["fwd_return"]
-        shorts = group[group["quintile"] == bot_q]["fwd_return"]
-        long_return = longs.mean() if len(longs) > 0 else np.nan
-        short_return = shorts.mean() if len(shorts) > 0 else np.nan
+        longs = group[group["quintile"] == top_q]
+        shorts = group[group["quintile"] == bot_q]
+        long_return, n_long = _leg_return(longs)
+        short_return, n_short = _leg_return(shorts)
         ls_return = long_return - short_return
         return pd.Series({
             "long_return": long_return,
             "short_return": short_return,
             "ls_return": ls_return,
-            "n_long": len(longs),
-            "n_short": len(shorts),
+            "n_long": n_long,
+            "n_short": n_short,
         })
 
     result = (

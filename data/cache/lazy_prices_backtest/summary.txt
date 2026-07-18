@@ -1,4 +1,5 @@
-Run: 2026-07-18T14:07:18.935756
+Run: 2026-07-18T19:16:33.478183
+Weighting: equal-weighted
 Rebalance dates: 72
 L/S N months: 59
 L/S Sharpe: -0.4771
