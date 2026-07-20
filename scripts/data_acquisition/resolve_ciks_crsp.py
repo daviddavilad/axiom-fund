@@ -86,8 +86,20 @@ def main() -> int:
                   AND shrcd IN (10, 11)
                 ORDER BY permno, namedt DESC
             """
+            # NOTE: pd.read_sql fails on SQLAlchemy 1.4 + pandas 2.3 with
+            # `TypeError: Query must be a string unless using sqlalchemy`.
+            # Third occurrence of this bug (returns.py cc4b78c, universe.py
+            # this session). Same fetchall workaround pattern.
             with db.engine.connect() as conn:
-                r = pd.read_sql(text(sql), conn, params={"as_of": snapshot_date})
+                result = conn.execute(text(sql), {"as_of": snapshot_date})
+                r = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+                for col in r.select_dtypes(include="object").columns:
+                    if col == "permno":
+                        continue
+                    try:
+                        r[col] = pd.to_numeric(r[col], errors="raise")
+                    except (ValueError, TypeError):
+                        pass
             r["first_snapshot_date"] = snapshot_date
             crsp_rows.append(r)
             print(f"  {snapshot_date}: {len(sub_permnos)} permnos requested, "
@@ -111,8 +123,15 @@ def main() -> int:
             WHERE f.cusip IS NOT NULL
               AND c.cik IS NOT NULL
         """
+        # Same pandas 2.3 / SQLAlchemy 1.4 workaround as line 89.
         with db.engine.connect() as conn:
-            comp_df = pd.read_sql(text(comp_sql), conn)
+            result = conn.execute(text(comp_sql))
+            comp_df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            for col in comp_df.select_dtypes(include="object").columns:
+                try:
+                    comp_df[col] = pd.to_numeric(comp_df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
         print(f"Compustat: {len(comp_df):,} distinct (gvkey, cusip8) pairs "
               f"with CIK")
         print()

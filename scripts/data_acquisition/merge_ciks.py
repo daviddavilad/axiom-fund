@@ -35,11 +35,19 @@ SAMPLE_END = "2025-01-01"
 
 
 def _normalize_cik(cik) -> str | None:
-    """Convert CIK to int-string (no leading zeros) for comparison."""
+    """Convert CIK to int-string (no leading zeros) for comparison.
+
+    Handles three input formats:
+      - Zero-padded string: '0000785956' -> '785956'
+      - Numeric float (CRSP): 785956.0 -> '785956'
+      - Integer: 785956 -> '785956'
+    """
     if pd.isna(cik):
         return None
-    s = str(cik).lstrip("0")
-    return s if s else None
+    try:
+        return str(int(float(str(cik).lstrip("0") or "0"))) or None
+    except (ValueError, TypeError):
+        return None
 
 
 def _count_10ks_in_window(client: EdgarClient, cik: str) -> int:

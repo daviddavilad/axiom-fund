@@ -59,6 +59,7 @@ config/secrets.yaml
 .DS_Store
 .AppleDouble
 .LSOverride
+
 # Nano editor backup files
 *.save
 
@@ -73,8 +74,13 @@ reports/tearsheets/
 # Private study materials (defense-of-choices doc, personal notes)
 docs/defense.md
 docs/notes/
+
 # R session history (not relevant to this Python project)
 .Rhistory
 .RData
 .Rproj.user/
 docs/onepager.md
+
+# Personal backup files
+*.bak
+*.bak_*

@@ -189,7 +189,11 @@ class EdgarClient:
             10-K filings ordered by filing date descending, dedup'd
             by accession number across both data sources.
         """
-        url = _SEC_SUBMISSIONS_URL_TEMPLATE.format(cik=cik)
+        # Zero-pad CIK to 10 digits — SEC's submissions API rejects unpadded
+        # CIKs with 404. Accepts both int-like strings ("785786") and
+        # already-padded strings ("0000785786").
+        cik_padded = str(cik).lstrip("0").zfill(10)
+        url = _SEC_SUBMISSIONS_URL_TEMPLATE.format(cik=cik_padded)
         raw = self._get_json(url)
 
         # Parse the recent block

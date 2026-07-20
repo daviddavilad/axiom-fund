@@ -28,7 +28,7 @@ DEFAULT_PROGRESS_PATH = Path("data/cache/lazy_prices_download_progress.parquet")
 DEFAULT_METADATA_PATH = Path("data/cache/lazy_prices_download.txt")
 
 SAMPLE_START = "2019-01-01"
-SAMPLE_END = "2025-01-01"
+SAMPLE_END = "2026-08-01"
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
-Run: 2026-07-05T22:06:40.518491
+Run: 2026-07-19T18:10:16.084358
 Universe source: data/cache/lazy_prices_universe.parquet
-Universe size: 1448
-Resolved: 1117
-Failed: 331
-Failure rate: 22.86%
+Universe size: 1519
+Resolved: 1181
+Failed: 338
+Failure rate: 22.25%

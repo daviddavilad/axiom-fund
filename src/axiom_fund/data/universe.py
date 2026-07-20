@@ -167,8 +167,23 @@ class Universe:
             "size": self._config.size,
         }
 
+        # NOTE: pd.read_sql fails on SQLAlchemy 1.4 + pandas 2.3 with
+        # `TypeError: Query must be a string unless using sqlalchemy`.
+        # WRDS pins SQLAlchemy 1.4; pandas 2.3 requires 2.x for text() +
+        # read_sql. Workaround: execute + fetchall + DataFrame(). Same
+        # pattern applied in returns.py commit cc4b78c.
         with self._db.engine.connect() as conn:
-            df = pd.read_sql(text(sql), conn, params=params)
+            result = conn.execute(text(sql), params)
+            df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # Coerce Decimal columns to float (fetchall returns Decimal for
+            # numeric SQL types; pd.read_sql would have coerced these).
+            for col in df.select_dtypes(include="object").columns:
+                if col == "permno":
+                    continue
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
 
         return df.reset_index(drop=True)
 

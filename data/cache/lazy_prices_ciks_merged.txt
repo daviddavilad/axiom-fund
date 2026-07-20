@@ -1,15 +1,15 @@
-Run: 2026-07-08T13:32:57.280711
-Universe size: 1448
-SEC-based resolutions: 1117
-CRSP-based resolutions: 1448
-Merged total: 1448
-Resolved: 1392
+Run: 2026-07-19T18:26:01.042248
+Universe size: 1519
+SEC-based resolutions: 1181
+CRSP-based resolutions: 1519
+Merged total: 1519
+Resolved: 1462
 By source:
 cik_source
-agree                     1040
-crsp_only                  275
-sec_only                    60
-none                        56
+agree                     1102
+crsp_only                  281
+sec_only                    62
+none                        57
 crsp_won                     8
 both_valid_prefer_crsp       8
 sec_won                      1

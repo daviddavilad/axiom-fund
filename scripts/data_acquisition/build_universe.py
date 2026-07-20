@@ -1,8 +1,11 @@
-"""Build the Lazy Prices sample universe: union of top-1000 across 2019-2024.
+"""Build the Lazy Prices sample universe: union of top-1000 across 2019-2026.
 
-Per docs/v2_item6_design.md, Item 6a operates on a 2019-2024 window. This
-script constructs the universe as the union of top-1000 U.S. common stocks
-by market cap at each year-end 2018-12-31 through 2023-12-31 (6 snapshots).
+Per docs/v2_item6_design.md, Item 6a originally operated on a 2019-2024
+window. Extended 2026-07-19 to include 2025 + 2026 YTD filings for improved
+statistical power (see "Sample forward extension (2026-07-19)" section).
+This script constructs the universe as the union of top-1000 U.S. common
+stocks by market cap at each year-end 2018-12-31 through 2025-12-31 (8
+snapshots).
 
 Rationale for union rather than snapshot: firms enter/exit the top-1000 over
 the sample window. Using a single-date snapshot would exclude firms that
@@ -44,6 +47,8 @@ SNAPSHOT_DATES = [
     "2021-12-31",  # Friday, trading day
     "2022-12-30",  # Friday (Dec 31 was Saturday)
     "2023-12-29",  # Friday (Dec 31 was Sunday)
+    "2024-12-31",  # Tuesday, trading day (added 2026-07-19)
+    "2025-12-31",  # Wednesday, trading day (added 2026-07-19)
 ]
 
 OUTPUT_PATH = Path("data/cache/lazy_prices_universe.parquet")
