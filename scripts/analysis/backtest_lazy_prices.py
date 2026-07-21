@@ -59,7 +59,9 @@ RETURNS_CACHE = Path("data/cache/lazy_prices_returns_daily.parquet")
 
 # Rebalance calendar: month-end dates 2019-01 through 2024-12
 REBALANCE_START = "2019-01-31"
-REBALANCE_END = "2024-12-31"
+# Extended 2026-07-20: dsf_v2 has returns through 2025-12-31, so last valid
+# rebalance with 21-day forward window is 2025-11-30.
+REBALANCE_END = "2025-11-30"
 
 # Forward-return holding window matches monthly rebalance
 HOLDING_DAYS = 21
@@ -156,7 +158,7 @@ def main() -> int:
     returns = _fetch_or_load_returns(
         permnos=universe_union["permno"].tolist(),
         start="2019-01-01",
-        end="2025-01-31",
+        end="2025-12-31",  # dsf_v2 max date
     )
     print(f"  {len(returns):,} return rows")
 

@@ -1,8 +1,8 @@
-Run: 2026-07-11T00:03:55.999604
-Input firms: 1441
-Tickers complete: 1385
-Tickers errored: 56
-Filings extracted: 7361
+Run: 2026-07-21T07:11:28.093458
+Input firms: 1519
+Tickers complete: 1462
+Tickers errored: 57
+Filings extracted: 9992
 Filings failed: 0
-Section rows: 21932
-Sample window: 2019-2024
+Section rows: 51715
+Sample window: 2019-2026

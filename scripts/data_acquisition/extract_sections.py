@@ -51,7 +51,7 @@ DEFAULT_METADATA_PATH = Path("data/cache/lazy_prices_sections.txt")
 LOCAL_STORAGE_PATH = "data/raw/edgar"
 
 SAMPLE_START_YEAR = 2019
-SAMPLE_END_YEAR = 2024
+SAMPLE_END_YEAR = 2026
 
 
 def main() -> int:

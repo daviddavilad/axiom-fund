@@ -181,23 +181,31 @@ class ReturnsPanel:
         end_date: str,
     ) -> pd.DataFrame:
         """Fetch regular daily returns from crsp.dsf."""
+        # NOTE: swapped from crsp.dsf to crsp.dsf_v2 (2026-07-20). Raw dsf
+        # lags to 2024-12-31 at UNM; dsf_v2 runs through 2025-12-31.
+        # Column renames handled via SQL aliases so downstream API unchanged:
+        #   dlycaldt -> date, dlyret -> ret, dlyretx -> retx, dlyvol -> vol,
+        #   dlyprc -> prc, dlycumfacpr -> cfacpr (adjusted-price factor).
+        # dsf_v2 has dlycap (direct marketcap) but we recompute from
+        # ABS(dlyprc) * shrout * 1000 to preserve exact numerical equivalence
+        # with prior cached data.
         sql = f"""
             SELECT
                 permno,
-                date,
-                ret,
-                retx,
-                vol,
-                prc,
-                ABS(prc) / NULLIF(cfacpr, 0) AS prc_adj,
+                dlycaldt AS date,
+                dlyret AS ret,
+                dlyretx AS retx,
+                dlyvol AS vol,
+                dlyprc AS prc,
+                ABS(dlyprc) / NULLIF(dlycumfacpr, 0) AS prc_adj,
                 shrout,
-                ABS(prc) * shrout * 1000 AS marketcap
-            FROM crsp.dsf
+                ABS(dlyprc) * shrout * 1000 AS marketcap
+            FROM crsp.dsf_v2
             WHERE permno IN {permno_list}
-              AND date >= :start_date
-              AND date <= :end_date
-              AND ret IS NOT NULL
-            ORDER BY permno, date;
+              AND dlycaldt >= :start_date
+              AND dlycaldt <= :end_date
+              AND dlyret IS NOT NULL
+            ORDER BY permno, dlycaldt;
         """
         params: dict[str, str] = {"start_date": start_date, "end_date": end_date}
         # NOTE: pd.read_sql fails on SQLAlchemy 1.4 + pandas 2.3 with
@@ -232,17 +240,24 @@ class ReturnsPanel:
         requested PERMNOs where dlret is not null. Null dlret typically
         means the security was still active at the CRSP cutoff.
         """
+        # NOTE: swapped from crsp.dsedelist to crsp.stkdelists (2026-07-20).
+        # Same lag rationale as _fetch_dsf_returns swap. Column renames:
+        #   dlstdt -> delistingdt, dlret -> delret. stkdelists does NOT
+        # have delretx (ex-dividend delisting return), so we approximate
+        # retx = delret. For delistings this is nearly always a small
+        # error since ex-dividend adjustments are dominated by the
+        # delisting mark-to-liquidation return.
         sql = f"""
             SELECT
                 permno,
-                dlstdt AS date,
-                dlret AS ret,
-                dlretx AS retx
-            FROM crsp.dsedelist
+                delistingdt AS date,
+                delret AS ret,
+                delret AS retx
+            FROM crsp.stkdelists
             WHERE permno IN {permno_list}
-              AND dlstdt >= :start_date
-              AND dlstdt <= :end_date
-              AND dlret IS NOT NULL;
+              AND delistingdt >= :start_date
+              AND delistingdt <= :end_date
+              AND delret IS NOT NULL;
         """
         params: dict[str, str] = {"start_date": start_date, "end_date": end_date}
         with self._db.engine.connect() as conn:
