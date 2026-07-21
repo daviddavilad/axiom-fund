@@ -1,10 +1,10 @@
-Run: 2026-07-21T11:24:01.882764
+Run: 2026-07-21T17:10:38.295428
 Weighting: equal-weighted
 Rebalance dates: 83
 L/S N months: 71
-L/S Sharpe: -0.3892
-L/S Sharpe 95% CI: [-1.1975, 0.4191]
-L/S annualized return: -0.0249
+L/S Sharpe: 0.3339
+L/S Sharpe 95% CI: [-0.4737, 1.1416]
+L/S annualized return: 0.0213
 L/S annualized vol: 0.0639
-L/S hit rate: 0.4085
-L/S max drawdown: -0.2692
+L/S hit rate: 0.5915
+L/S max drawdown: -0.1292

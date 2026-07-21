@@ -180,6 +180,146 @@ class TestComputeLongShort:
         result = compute_long_short_returns(quintiles, fwd)
         assert tuple(result.columns) == LS_RETURN_COLUMNS
 
+    def test_columns_match_locked_schema(self):
+        permnos = list(range(100, 110))
+        aligned = _aligned_signal("2020-06-30", permnos, [float(z) for z in range(1, 11)])
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        result = compute_long_short_returns(quintiles, fwd)
+        assert tuple(result.columns) == LS_RETURN_COLUMNS
+
+
+class TestLongQuintileConvention:
+    """Tests that the long_quintile parameter explicitly controls which
+    quintile is longed and which is shorted. Prevents the sign-convention
+    regression discovered on 2026-07-20 where Lazy Prices was being longed
+    Q5 and shorted Q1, which is BACKWARDS relative to CMN 2020 where
+    low-change firms (Q1) outperform.
+    """
+
+    def test_default_long_quintile_is_top(self):
+        # Baseline: without specifying long_quintile, behavior matches
+        # the pre-2026-07-21 default: long Q5, short Q1
+        permnos = list(range(100, 110))
+        z_scores = [float(z) for z in range(1, 11)]
+        aligned = _aligned_signal("2020-06-30", permnos, z_scores)
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.02
+        returns_by_permno[108] = 0.10
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        result = compute_long_short_returns(quintiles, fwd, n_quintiles=5)
+        row = result.iloc[0]
+        # Default: long = top quintile (Q5), short = bottom (Q1)
+        assert row.long_return == pytest.approx(0.10)
+        assert row.short_return == pytest.approx(0.02)
+        assert row.ls_return == pytest.approx(0.08)
+
+    def test_long_quintile_top_matches_default(self):
+        # Explicit long_quintile="top" is identical to default
+        permnos = list(range(100, 110))
+        z_scores = [float(z) for z in range(1, 11)]
+        aligned = _aligned_signal("2020-06-30", permnos, z_scores)
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.02
+        returns_by_permno[108] = 0.10
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        default_result = compute_long_short_returns(quintiles, fwd, n_quintiles=5)
+        explicit_result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, long_quintile="top"
+        )
+        # Same numbers whether default or explicit
+        for col in ["long_return", "short_return", "ls_return", "n_long", "n_short"]:
+            assert default_result.iloc[0][col] == explicit_result.iloc[0][col]
+
+    def test_long_quintile_bottom_flips_legs(self):
+        # long_quintile="bottom" -> long = Q1 (0.02), short = Q5 (0.10)
+        # ls_return = long - short = 0.02 - 0.10 = -0.08
+        permnos = list(range(100, 110))
+        z_scores = [float(z) for z in range(1, 11)]
+        aligned = _aligned_signal("2020-06-30", permnos, z_scores)
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.02
+        returns_by_permno[108] = 0.10
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, long_quintile="bottom"
+        )
+        row = result.iloc[0]
+        # long = Q1 (permnos 100, 101 at 0.02), short = Q5 (108, 109 at 0.10)
+        assert row.long_return == pytest.approx(0.02)
+        assert row.short_return == pytest.approx(0.10)
+        assert row.ls_return == pytest.approx(-0.08)
+        assert row.n_long == 2
+        assert row.n_short == 2
+
+    def test_long_quintile_bottom_ls_is_negative_of_top(self):
+        # Symmetric flip: ls_return under "bottom" = -ls_return under "top"
+        # (long_leg and short_leg swap, so ls = long - short flips sign)
+        permnos = list(range(100, 110))
+        z_scores = [float(z) for z in range(1, 11)]
+        aligned = _aligned_signal("2020-06-30", permnos, z_scores)
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        returns_by_permno = {p: 0.05 for p in permnos}
+        returns_by_permno[100] = 0.02
+        returns_by_permno[101] = 0.02
+        returns_by_permno[108] = 0.10
+        returns_by_permno[109] = 0.10
+        fwd = _forward_returns(
+            "2020-06-30",
+            permnos,
+            [returns_by_permno[p] for p in permnos],
+        )
+        top_result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, long_quintile="top"
+        )
+        bottom_result = compute_long_short_returns(
+            quintiles, fwd, n_quintiles=5, long_quintile="bottom"
+        )
+        # ls_return under "bottom" is exact negative of "top"
+        assert bottom_result.iloc[0].ls_return == pytest.approx(
+            -top_result.iloc[0].ls_return
+        )
+        # Long/short returns swap:
+        assert bottom_result.iloc[0].long_return == pytest.approx(
+            top_result.iloc[0].short_return
+        )
+        assert bottom_result.iloc[0].short_return == pytest.approx(
+            top_result.iloc[0].long_return
+        )
+
+    def test_invalid_long_quintile_raises(self):
+        permnos = list(range(100, 110))
+        z_scores = [float(z) for z in range(1, 11)]
+        aligned = _aligned_signal("2020-06-30", permnos, z_scores)
+        quintiles = assign_quintiles(aligned, n_quintiles=5)
+        fwd = _forward_returns("2020-06-30", permnos, [0.05] * 10)
+        with pytest.raises(ValueError, match="long_quintile"):
+            compute_long_short_returns(
+                quintiles, fwd, n_quintiles=5, long_quintile="middle"
+            )
+            
+
 def _weights(
     date: str,
     permnos: list[int],

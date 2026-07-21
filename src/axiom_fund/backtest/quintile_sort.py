@@ -24,6 +24,8 @@ pre-commitments used by the Lazy Prices runner.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 
@@ -119,10 +121,12 @@ def compute_long_short_returns(
     forward_returns_df: pd.DataFrame,
     n_quintiles: int = 5,
     weights_df: pd.DataFrame | None = None,
+    long_quintile: Literal["top", "bottom"] = "top",
 ) -> pd.DataFrame:
     """Compute L/S portfolio return per rebalance date.
 
-    Long leg = top quintile (highest z_score). Short leg = bottom quintile.
+    Long leg = quintile designated by long_quintile ("top" = highest z_score
+    quintile, "bottom" = lowest). Short leg = the opposite quintile.
     ls_return = long_return - short_return.
 
     Weighting scheme:
@@ -147,6 +151,12 @@ def compute_long_short_returns(
     weights_df : pd.DataFrame | None, default None
         Optional weights panel. When provided, must have columns
         'date', 'permno', 'weight'. Weights must be non-negative.
+    long_quintile : Literal["top", "bottom"], default "top"
+        Which quintile to LONG. "top" longs quintile n_quintiles (highest
+        z_score) and shorts quintile 1. "bottom" longs quintile 1 and
+        shorts quintile n_quintiles. Explicit for signals where the
+        theoretically-longable end is the low z_score end (e.g. Lazy
+        Prices: low text change firms outperform per CMN 2020).
 
     Returns
     -------
@@ -171,6 +181,10 @@ def compute_long_short_returns(
         )
     if n_quintiles < 2:
         raise ValueError(f"n_quintiles must be >= 2, got {n_quintiles}")
+    if long_quintile not in ("top", "bottom"):
+        raise ValueError(
+            f"long_quintile must be 'top' or 'bottom', got {long_quintile!r}"
+        )
 
     if weights_df is not None:
         w_required = {"date", "permno", "weight"}
@@ -206,8 +220,14 @@ def compute_long_short_returns(
             how="left",
         )
 
-    top_q = float(n_quintiles)
-    bot_q = 1.0
+    # Swap based on convention: for "top", long the top quintile; for
+    # "bottom", long the bottom quintile (short becomes the opposite).
+    if long_quintile == "top":
+        long_q = float(n_quintiles)
+        short_q = 1.0
+    else:  # "bottom"
+        long_q = 1.0
+        short_q = float(n_quintiles)
     use_weights = weights_df is not None
 
     def _leg_return(leg: pd.DataFrame) -> tuple[float, int]:
@@ -227,8 +247,8 @@ def compute_long_short_returns(
         return float((w * weighted["fwd_return"]).sum()), len(weighted)
 
     def _per_date(group: pd.DataFrame) -> pd.Series:
-        longs = group[group["quintile"] == top_q]
-        shorts = group[group["quintile"] == bot_q]
+        longs = group[group["quintile"] == long_q]
+        shorts = group[group["quintile"] == short_q]
         long_return, n_long = _leg_return(longs)
         short_return, n_short = _leg_return(shorts)
         ls_return = long_return - short_return

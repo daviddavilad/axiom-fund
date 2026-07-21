@@ -10,8 +10,9 @@ Pipeline (all methodology pre-committed at docs/v2_item6_design.md
      backtest.quintile_sort.assign_quintiles
   5. Compute 21-trading-day forward returns via
      backtest.forward_returns.compute_forward_returns
-  6. Compute L/S monthly return series (long top quintile, short bottom
-     quintile, equal-weighted within quintile) via
+  6. Compute L/S monthly return series per LONG_QUINTILE convention
+     (Lazy Prices: LONG_QUINTILE="bottom", long Q1=low-change firms
+     per CMN 2020, short Q5=high-change firms) via
      backtest.quintile_sort.compute_long_short_returns
   7. Report Sharpe + hit rate + drawdowns via
      backtest.metrics.compute_performance_metrics
@@ -65,6 +66,11 @@ REBALANCE_END = "2025-11-30"
 
 # Forward-return holding window matches monthly rebalance
 HOLDING_DAYS = 21
+
+# Sign convention: long Q1 (low text change) per CMN 2020. High raw_signal
+# = high text change = Q5 = short-worthy. Discovered 2026-07-20 that prior
+# sessions had this backwards; runner + tests now lock it explicitly.
+LONG_QUINTILE = "bottom"
 
 
 def _fetch_or_load_returns(permnos: list[int], start: str, end: str) -> pd.DataFrame:
@@ -205,12 +211,14 @@ def main() -> int:
             .copy()
         )
         print(f"  Weight rows: {len(weights_df):,}")
+        # Sign convention comes from LONG_QUINTILE module constant.
         ls_returns = compute_long_short_returns(
-            quintiles, fwd, n_quintiles=5, weights_df=weights_df,
+            quintiles, fwd, n_quintiles=5,
+            weights_df=weights_df, long_quintile=LONG_QUINTILE,
         )
     else:
         ls_returns = compute_long_short_returns(
-            quintiles, fwd, n_quintiles=5
+            quintiles, fwd, n_quintiles=5, long_quintile=LONG_QUINTILE,
         )
     print(f"  {len(ls_returns):,} monthly return rows")
 
@@ -246,8 +254,21 @@ def main() -> int:
         print(f"  Hit rate:          {m.hit_rate:.1%}")
         print(f"  Max drawdown:      {m.max_drawdown:.2%}")
 
-    _print_metrics("Long-only (top quintile)", long_metrics, long_series)
-    _print_metrics("Short-only (bottom quintile)", short_metrics, short_series)
+    # Labels reflect LONG_QUINTILE configuration
+    long_leg_label = "Q1" if LONG_QUINTILE == "bottom" else "Q5"
+    short_leg_label = "Q5" if LONG_QUINTILE == "bottom" else "Q1"
+    _print_metrics(
+        f"Long-only ({long_leg_label}, low text change per CMN)"
+        if LONG_QUINTILE == "bottom"
+        else f"Long-only ({long_leg_label}, top quintile of raw_signal)",
+        long_metrics, long_series,
+    )
+    _print_metrics(
+        f"Short-only ({short_leg_label}, high text change per CMN)"
+        if LONG_QUINTILE == "bottom"
+        else f"Short-only ({short_leg_label}, bottom quintile of raw_signal)",
+        short_metrics, short_series,
+    )
     _print_metrics("Long-Short", ls_metrics, ls_series)
 
     # Metadata summary
