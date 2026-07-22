@@ -201,14 +201,35 @@ def main() -> int:
     # L/S portfolio
     print(f"Computing L/S portfolio returns ({weighting_label})...")
     if args.value_weighted:
-        # Weights = market cap at each rebalance date
+        # Weights = market cap at each rebalance date, looked up on the
+        # most recent trading day at or before the rebalance date.
+        # Fixed 2026-07-22: prior version used returns[date].isin(rebal),
+        # which returned empty for calendar month-ends falling on
+        # weekends/holidays (e.g. 2020-02-29 Saturday, 2021-05-31
+        # Memorial Day). Bug dropped 21 months from value-weighted N.
+        rebal_frame = pd.DataFrame({"date": pd.to_datetime(rebalance_dates)})
+        rebal_frame = rebal_frame.sort_values("date")
+        mcap_frame = (
+            returns[["date", "permno", "marketcap"]]
+            .dropna(subset=["marketcap"])
+            .sort_values(["permno", "date"])
+        )
+        # merge_asof by permno: for each rebalance date, find most recent
+        # trading day at or before with marketcap.
+        weights_rows = []
+        for permno, group in mcap_frame.groupby("permno", sort=False):
+            merged = pd.merge_asof(
+                rebal_frame,
+                group[["date", "marketcap"]].sort_values("date"),
+                on="date",
+                direction="backward",
+            )
+            merged["permno"] = permno
+            weights_rows.append(merged.dropna(subset=["marketcap"]))
         weights_df = (
-            returns.loc[
-                returns["date"].isin(rebalance_dates),
-                ["date", "permno", "marketcap"],
-            ]
+            pd.concat(weights_rows, ignore_index=True)
             .rename(columns={"marketcap": "weight"})
-            .copy()
+            [["date", "permno", "weight"]]
         )
         print(f"  Weight rows: {len(weights_df):,}")
         # Sign convention comes from LONG_QUINTILE module constant.
