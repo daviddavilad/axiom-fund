@@ -1,0 +1,195 @@
+"""5x5 sort: Size quintile (Size1-Size5) x Lazy Prices quintile.
+
+Refines the 3x5 tercile sort by splitting size into five buckets.
+Reveals whether the CMN effect within the Large tercile is:
+  - Confined to Size4 with Size5 reversing (mega-cap-specific reversal)
+  - Peak at Size3 or Size4 (mid-to-large sweet spot)
+  - Increasing monotonically with size (large-cap-favored anomaly)
+
+Prompted by 2026-07-22 finding that:
+  - Tercile Large L/S = +7.30% ann Sharpe +1.197 (CMN direction)
+  - But value-weighted Large-dominated L/S = -3.48% ann (opposite)
+  → within Large tercile, mega-mega-caps must reverse; quintile split
+    should isolate WHERE this reversal happens.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+import pandas as pd
+import numpy as np
+
+
+BACKTEST_DIR = Path("data/cache/lazy_prices_backtest")
+RETURNS_CACHE = Path("data/cache/lazy_prices_returns_daily.parquet")
+SIGNAL_CACHE = Path("data/cache/lazy_prices_signal.parquet")
+HOLDING_DAYS = 21
+N_SIZE_BUCKETS = 5
+N_LP_QUINTILES = 5
+
+
+def main() -> None:
+    print("Loading data...")
+    positions = pd.read_parquet(BACKTEST_DIR / "quintile_positions.parquet")
+    returns = pd.read_parquet(RETURNS_CACHE)
+    signal = pd.read_parquet(SIGNAL_CACHE)
+
+    positions["date"] = pd.to_datetime(positions["date"])
+    returns["date"] = pd.to_datetime(returns["date"])
+    signal["date_filed"] = pd.to_datetime(signal["date_filed"])
+
+    rebal_dates = sorted(positions["date"].unique())
+    print(f"  {len(rebal_dates)} rebalance dates")
+
+    # Marketcap lookup at rebalance dates (merge_asof pattern)
+    print("Building marketcap lookup at rebalance dates...")
+    rebal_frame = pd.DataFrame({"date": pd.to_datetime(rebal_dates)}).sort_values("date")
+    mcap = returns[["date", "permno", "marketcap"]].dropna(subset=["marketcap"])
+    mcap_rows = []
+    for permno, group in mcap.groupby("permno", sort=False):
+        merged = pd.merge_asof(
+            rebal_frame, group[["date", "marketcap"]].sort_values("date"),
+            on="date", direction="backward",
+        )
+        merged["permno"] = permno
+        mcap_rows.append(merged.dropna(subset=["marketcap"]))
+    mcap_at_rebal = pd.concat(mcap_rows, ignore_index=True)
+    print(f"  {len(mcap_at_rebal):,} rows")
+
+    # Raw signal aligned to rebalance dates
+    print("Aligning raw_signal to rebalance dates...")
+    signal_min = signal[["permno", "date_filed", "raw_signal"]].sort_values(
+        ["permno", "date_filed"]
+    )
+    aligned_rows = []
+    for rebal_date in rebal_dates:
+        eligible = signal_min[signal_min.date_filed <= rebal_date]
+        latest = (
+            eligible.sort_values(["permno", "date_filed"])
+            .groupby("permno", as_index=False)
+            .last()
+        )
+        latest["date"] = rebal_date
+        aligned_rows.append(latest[["date", "permno", "raw_signal"]])
+    aligned_signal = pd.concat(aligned_rows, ignore_index=True)
+
+    joined = aligned_signal.merge(
+        mcap_at_rebal, on=["date", "permno"], how="inner"
+    )
+    print(f"  {len(joined):,} rows after joining")
+
+    # Assign size quintile per date (Size1=smallest, Size5=largest)
+    print(f"Assigning {N_SIZE_BUCKETS} size buckets per date...")
+    joined["size_bucket"] = np.nan
+    for date_val, group in joined.groupby("date"):
+        if len(group) < N_SIZE_BUCKETS:
+            continue
+        try:
+            labels = pd.qcut(
+                group["marketcap"], q=N_SIZE_BUCKETS, labels=False, duplicates="drop"
+            )
+            joined.loc[group.index, "size_bucket"] = labels.values + 1
+        except ValueError:
+            continue
+    joined = joined.dropna(subset=["size_bucket"])
+    joined["size_bucket"] = joined["size_bucket"].astype(int)
+
+    # Assign 5 LP quintiles within each (date, size_bucket)
+    print("Assigning LP quintiles within each size bucket...")
+    joined["lp_quintile"] = np.nan
+    for (date_val, size), group in joined.groupby(["date", "size_bucket"]):
+        if len(group) < N_LP_QUINTILES:
+            continue
+        try:
+            labels = pd.qcut(
+                group["raw_signal"], q=N_LP_QUINTILES, labels=False, duplicates="drop"
+            )
+            joined.loc[group.index, "lp_quintile"] = labels.values + 1
+        except ValueError:
+            continue
+    joined = joined.dropna(subset=["lp_quintile"])
+    print(f"  {len(joined):,} rows with size+quintile assigned")
+
+    # Forward returns
+    print(f"Computing {HOLDING_DAYS}-day forward returns...")
+    all_returns = returns[["permno", "date", "ret"]].sort_values(["permno", "date"])
+    fwd_rows = []
+    for rebal_date in rebal_dates:
+        eligible_permnos = joined[joined.date == rebal_date]["permno"].unique()
+        future = all_returns[
+            (all_returns.date > rebal_date)
+            & (all_returns.permno.isin(eligible_permnos))
+        ].sort_values(["permno", "date"])
+        future["rank"] = future.groupby("permno").cumcount()
+        window = future[future["rank"] < HOLDING_DAYS]
+        fwd = (
+            window.groupby("permno")["ret"]
+            .apply(lambda r: (1 + r).prod() - 1)
+            .rename("fwd_return")
+            .reset_index()
+        )
+        fwd["date"] = rebal_date
+        fwd_rows.append(fwd)
+    fwd_returns = pd.concat(fwd_rows, ignore_index=True)
+
+    merged = joined.merge(fwd_returns, on=["date", "permno"], how="left")
+    merged = merged.dropna(subset=["fwd_return"])
+    print(f"  {len(merged):,} rows with forward returns")
+
+    # Per-bucket monthly means
+    per_bucket_monthly = (
+        merged.groupby(["date", "size_bucket", "lp_quintile"])["fwd_return"]
+        .agg(["mean", "count"])
+        .reset_index()
+    )
+
+    # Summary across dates
+    summary = (
+        per_bucket_monthly.groupby(["size_bucket", "lp_quintile"])["mean"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+    summary.columns = ["size_bucket", "lp_quintile", "mean_mo_ret", "std_mo_ret", "n_months"]
+    summary["annualized_ret"] = (1 + summary["mean_mo_ret"]) ** 12 - 1
+    summary["monthly_sharpe"] = summary["mean_mo_ret"] / summary["std_mo_ret"]
+    summary["annualized_sharpe"] = summary["monthly_sharpe"] * np.sqrt(12)
+
+    print()
+    print("=" * 70)
+    print("5x5 sort: Size quintile x Lazy Prices quintile")
+    print("Size1=smallest 20%, Size5=largest 20%")
+    print("Equal-weighted within bucket; average of monthly bucket means")
+    print("=" * 70)
+    for size in range(1, N_SIZE_BUCKETS + 1):
+        print(f"\nSize{size} bucket:")
+        s = summary[summary.size_bucket == size].sort_values("lp_quintile")
+        print(s[["lp_quintile", "mean_mo_ret", "annualized_ret", "annualized_sharpe", "n_months"]].to_string(index=False))
+
+    # 5x1 L/S summary
+    print()
+    print("=" * 70)
+    print("L/S per size quintile (Q1 - Q5, per CMN direction)")
+    print("=" * 70)
+    for size in range(1, N_SIZE_BUCKETS + 1):
+        q1 = per_bucket_monthly[
+            (per_bucket_monthly.size_bucket == size)
+            & (per_bucket_monthly.lp_quintile == 1)
+        ].set_index("date")["mean"]
+        q5 = per_bucket_monthly[
+            (per_bucket_monthly.size_bucket == size)
+            & (per_bucket_monthly.lp_quintile == 5)
+        ].set_index("date")["mean"]
+        ls = (q1 - q5).dropna()
+        ann_ret = (1 + ls.mean()) ** 12 - 1
+        ann_sharpe = ls.mean() / ls.std() * np.sqrt(12)
+        print(f"  Size{size}: L/S mean {ls.mean() * 100:+.3f}%/mo, "
+              f"ann {ann_ret * 100:+.2f}%, Sharpe {ann_sharpe:+.3f} "
+              f"(N={len(ls)})")
+
+    # Save
+    out = BACKTEST_DIR / "size_quintile_by_lazy_prices_sort.parquet"
+    per_bucket_monthly.to_parquet(out, index=False)
+    print(f"\nSaved: {out}")
+
+
+if __name__ == "__main__":
+    main()
