@@ -241,12 +241,46 @@ Global pooled backtests miss the structure — pooled EW dilutes Size4 with nois
 
 **Implication:** axiom-fund's +3.97% ann VW alpha and CMN's +22%/yr are **NOT directly comparable** — different signals, different controls, different samples. Prior "our result is ~1/7 of CMN's" framing was rough at best. Faithful replication (deferred to a separate future repo) is now much more concrete since the code IS the spec.
 
+### Mega-Cap Reversal Mechanism (2026-07-24, commit 96)
+
+The Size5 VW reversal is caused by ~10 firms.
+
+**Counterfactual (`scripts/exploration/top_size5_mega_caps_diagnostic.py`):**
+- Full Size5 VW L/S: -5.98% ann, Sharpe -0.528
+- Size5 VW L/S excluding top-10 firms per rebalance date: **+0.91% ann, Sharpe +0.119**
+
+Excluding just 10 firms flips the sign from strongly negative back to slightly positive (CMN direction).
+
+**Firms identified (Magnificent Seven + Big Healthcare/Finance rotators):**
+
+| Ticker | Months in top-10 | Avg market cap | Avg LP quintile | Avg fwd return |
+|---|---|---|---|---|
+| AMZN | 70/70 | $1.64T | 1.86 (Q1-Q2, low-change) | +1.75%/mo |
+| GOOG | 70/70 | $795B | 3.11 (Q3, moderate) | +2.80%/mo |
+| GOOGL | 70/70 | $793B | 3.11 (Q3, moderate) | +2.79%/mo |
+| MSFT | 65/70 | $2.5T | 2.78 (Q3, moderate) | +1.93%/mo |
+| FB / META | 62/70 | $877B | 3.94 (Q4, high-change) | +2.54%/mo |
+| AAPL | 62/70 | $2.8T | 3.37 (Q3-Q4) | +1.95%/mo |
+| TSLA | 61/70 | $827B | 3.89 (Q4, high-change) | +2.13%/mo |
+| **NVDA** | 52/70 | $1.8T | **4.81 (Q5, highest change)** | **+4.89%/mo** |
+
+Plus rotating Big Healthcare/Finance appearances: JNJ, JPM, UNH, AVGO, LLY.
+
+**Mechanism story:** at mega-mega-cap scale, heavy 10-K change signals **business evolution** (new AI product lines, cloud infrastructure buildout, new therapeutic pipelines) not risk disclosure. NVDA is the poster child: nearly always in Q5 (high change), with +4.89%/mo forward returns (~59% annualized). These firms would be SHORTED by pure CMN and crush that trade. AMZN is the counterexample — low-change 10-K (Q1-Q2), moderate returns; Amazon does not drive the reversal.
+
+**Refined substantive picture: the Lazy Prices anomaly is a two-regime phenomenon by size.**
+
+1. **Regime 1 — sub-mega-cap:** CMN direction works. Effect peaks in Size4 upper mid-cap (Sharpe +0.638-0.770, factor-orthogonal alpha). Heavy 10-K change = risk disclosure.
+2. **Regime 2 — mega-mega-cap (top ~10 firms):** CMN direction REVERSES. Just 10 firms drive it (mostly Magnificent Seven). Heavy 10-K change = growth disclosure.
+
+The signal has different semantic meaning at different size levels. This is much stronger than "bimodal by size" — it's a mechanism story that explains WHY the direction changes.
+
 ## Current State (2026-07-24)
 
 - Repository at commit 94 (`8690d97`) with 465 tests passing (non-integration)
 - Test-suite integration cleanup queued (fundamentals.py + ff_factors.py fetchall bugs)
 - **Strongest research finding:** Size4 VW L/S Sharpe +0.770 (stat-sig), FF6-adjusted alpha +3.97% ann (marginal-to-significant depending on bandwidth choice)
-- Substantive picture: Lazy Prices anomaly is bimodal by size — concentrated in Size4 (upper mid-cap, 60-80th marketcap percentile), reversed in mega-mega-caps within Size5 (VW-only)
+- Substantive picture: Lazy Prices anomaly is a TWO-REGIME phenomenon by size — CMN direction in sub-mega-caps (peak at Size4, factor-orthogonal alpha), REVERSED in mega-mega-caps driven by ~10 Magnificent Seven-style firms with growth-signal 10-K changes.
 
 ## Research Directions
 
