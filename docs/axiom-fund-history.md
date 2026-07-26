@@ -275,12 +275,87 @@ Plus rotating Big Healthcare/Finance appearances: JNJ, JPM, UNH, AVGO, LLY.
 
 The signal has different semantic meaning at different size levels. This is much stronger than "bimodal by size" — it's a mechanism story that explains WHY the direction changes.
 
+### NYSE-Breakpoint Robustness — Peak Moves to Size5 (2026-07-25)
+
+Standard academic methodology (CMN 2020, Fama-French, etc.) uses NYSE-based size breakpoints rather than in-sample percentiles, because in-sample buckets are systematically biased by universe composition. axiom-fund's universe (CRSP top-1000) skews larger, so in-sample "Size4" (60-80th percentile) tilts toward mid-caps in real dollar terms.
+
+**Infrastructure:**
+- `scripts/data_acquisition/fetch_nyse_size_breakpoints.py`: fetches NYSE common stock marketcap distribution from `crsp.msf_v2` per month (filter: `primaryexch='N' AND sharetype='NS' AND securitytype='EQTY' AND securitysubtype='COM'` — excludes ETFs, ADRs, closed-end funds). Computes p20/p40/p60/p80 breakpoints per rebalance date. Cached to `data/cache/nyse_size_breakpoints.parquet`.
+- `scripts/exploration/size_quintile_nyse_breakpoints.py`: 5×5 sort using NYSE breakpoints, direct comparison to in-sample results.
+- `scripts/analysis/ff6_spanning_size5_nyse.py`: FF6 regression on NYSE Size5 L/S.
+- `scripts/analysis/ff6_bootstrap_size5_nyse.py`: bootstrap CIs on NYSE Size5 L/S.
+
+**NYSE-breakpoint bucket distribution** (much different from equal-weighted 20% per bucket under in-sample):
+- Size1 (< NYSE p20): 1.9% of universe
+- Size2 (p20-p40): 5.8%
+- Size3 (p40-p60): 27.5%
+- Size4 (p60-p80): 34.5%
+- Size5 (> NYSE p80): 30.4%
+
+**Peak moves from Size4 to Size5:**
+
+| Bucket | L/S ann | Sharpe |
+|---|---|---|
+| Size1 | -28.29% | -0.421 (noisy, only ~24 firms/month) |
+| Size2 | -4.44% | -0.122 |
+| Size3 | -0.36% | -0.034 |
+| Size4 (was in-sample peak +0.638) | +0.50% | **+0.068 (near zero)** |
+| **Size5 (was in-sample near-zero)** | **+6.26%** | **+1.177** |
+
+The prior "Size4 is the peak" narrative was an in-sample percentile artifact. Under CMN's own methodology, the CMN peak is in Size5 (large caps above NYSE p80 ~$12-19B).
+
+### FF6 Spanning + Bootstrap on NYSE Size5 EW L/S — Publishable Alpha (2026-07-25)
+
+**FF6 spanning results (NYSE Size5 EW, N=71):**
+
+| Metric | Value |
+|---|---|
+| Raw L/S ann | +6.08% |
+| FF6-adjusted alpha (annual) | **+5.70%** |
+| HAC t (lag=4) | **+3.04, p=0.0024** |
+| HAC t (lag=6) | +3.18, p=0.0015 |
+| HAC t (lag=8) | +3.32, p=0.0009 |
+| Adj R² | -0.030 (factors explain essentially nothing) |
+
+**Bootstrap corroboration (10K resamples, all block sizes 3/4/6/8):**
+- Sharpe p-values: 0.0024–0.0038 (uniformly SIG at 1%)
+- Alpha p-values: 0.0076–0.0092 (uniformly SIG at 1%)
+- All CIs exclude zero
+- No sensitivity to bandwidth choice
+
+**All factor loadings are individually not significant.** Real: SMB, HML, RMW, CMA, MOM, MKT-RF — none reject the null. NYSE Size5 L/S is genuinely orthogonal to known factors.
+
+**Comparison to prior Size4 in-sample finding:**
+
+| Metric | Size4 in-sample EW | NYSE Size5 EW |
+|---|---|---|
+| Raw L/S ann | +4.33% | **+6.08%** |
+| Alpha ann | +3.13% | **+5.70%** |
+| HAC t (lag=4) | 1.48 (p=0.14) | **3.04 (p=0.002)** |
+| Bootstrap alpha p (bs=4) | 0.087 | **0.0076** |
+| Adj R² | 0.008 | -0.030 |
+
+NYSE Size5 is unambiguously stronger than Size4 in-sample on every dimension.
+
+**Mega-cap reversal survives under NYSE breakpoints (VW, top-10 exclusion counterfactual):**
+- Full Size5 VW L/S: -2.31% ann, Sharpe -0.212 (weaker than in-sample -0.528 but same direction)
+- Excluding top-5: +1.48% ann, Sharpe +0.201 (flips)
+- Excluding top-10: **+3.55% ann, Sharpe +0.537** (strongly CMN)
+
+Same ~10 firms drive the VW reversal under either bucket definition.
+
+**Refined substantive picture, robust to methodology:**
+- The Lazy Prices anomaly is concentrated in large-cap firms (above NYSE 80th percentile in 2019-2025 modern sample)
+- Raw L/S +6.08%/yr, FF6-orthogonal alpha +5.70%/yr, HAC t=3.04 (bandwidth-robust to at least lag 8 and block size 8), bootstrap p<0.01 uniformly
+- Comparison to CMN 2020's original result (+22%/yr on 1995-2014): axiom-fund's +5.70%/yr is roughly 1/4 the magnitude, consistent with a "modern regime, effect weaker but still statistically significant" reading, and on a methodological approximation (TF-IDF cosine per section vs CMN's Jaccard on whole documents)
+- Within large-caps, the very top ~10 mega-mega-cap firms (Magnificent Seven + Big Healthcare rotators) partially offset the effect under value-weighting; equal-weighted result is robust because it doesn't concentrate on the top few
+
 ## Current State (2026-07-24)
 
 - Repository at commit 94 (`8690d97`) with 465 tests passing (non-integration)
 - Test-suite integration cleanup queued (fundamentals.py + ff_factors.py fetchall bugs)
 - **Strongest research finding:** Size4 VW L/S Sharpe +0.770 (stat-sig), FF6-adjusted alpha +3.97% ann (marginal-to-significant depending on bandwidth choice)
-- Substantive picture: Lazy Prices anomaly is a TWO-REGIME phenomenon by size — CMN direction in sub-mega-caps (peak at Size4, factor-orthogonal alpha), REVERSED in mega-mega-caps driven by ~10 Magnificent Seven-style firms with growth-signal 10-K changes.
+- Substantive picture (robust to NYSE-breakpoint methodology): Lazy Prices anomaly is concentrated in **large-cap firms** (above NYSE p80). Raw L/S +6.08%/yr, FF6-orthogonal alpha +5.70%/yr (HAC t=3.04, bootstrap p<0.01 uniformly across all bandwidth choices), factor loadings not individually significant. Prior "Size4 is the peak" narrative was an in-sample percentile artifact — under CMN's own methodology, peak is Size5. Mega-mega-cap top-10 reversal mechanism (Magnificent Seven + rotators) survives NYSE breakpoints.
 
 ## Research Directions
 
