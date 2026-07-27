@@ -350,6 +350,47 @@ Same ~10 firms drive the VW reversal under either bucket definition.
 - Comparison to CMN 2020's original result (+22%/yr on 1995-2014): axiom-fund's +5.70%/yr is roughly 1/4 the magnitude, consistent with a "modern regime, effect weaker but still statistically significant" reading, and on a methodological approximation (TF-IDF cosine per section vs CMN's Jaccard on whole documents)
 - Within large-caps, the very top ~10 mega-mega-cap firms (Magnificent Seven + Big Healthcare rotators) partially offset the effect under value-weighting; equal-weighted result is robust because it doesn't concentrate on the top few
 
+### FF6 Spanning + Bootstrap on NYSE Size5 VW L/S — Confirms Mechanism (2026-07-26)
+
+Companion analysis to prior EW result. Same infrastructure, `--weighting {ew, vw}` CLI added to both `ff6_spanning_size5_nyse.py` and `ff6_bootstrap_size5_nyse.py`. Both scripts now load from `data/cache/lazy_prices_backtest/nyse_size5_ls_series.parquet` (produced by new `scripts/exploration/nyse_size5_ls_series.py`).
+
+**NYSE Size5 VW L/S FF6 spanning (N=71):**
+
+| Metric | Value |
+|---|---|
+| Raw L/S ann | -2.31% |
+| FF6-adjusted alpha (annual) | -2.57% |
+| HAC t (lag=4) | -0.46, p=0.64 |
+| HAC t (lag=6) | -0.43, p=0.66 |
+| HAC t (lag=8) | -0.43, p=0.67 |
+| Adj R² | -0.085 |
+
+**Bootstrap corroboration (all block sizes):**
+- Alpha p-values: 0.56 / 0.61 / 0.72 / 0.72 — nowhere near significance
+- CI widths ~22 percentage points, uniformly straddling zero
+
+**Substantive:** VW is essentially noise around a slightly-negative point estimate. Standard errors are ~3× larger than EW (0.46% vs 0.16%) — mega-cap concentration adds volatility without corresponding directional signal. Consistent with prior top-10 exclusion counterfactual (Size5 VW L/S: -0.212 Sharpe → +0.537 excluding top-10).
+
+**Complete EW vs VW comparison:**
+
+| Metric | EW | VW |
+|---|---|---|
+| Raw L/S ann | +6.08% | -2.31% |
+| FF6 alpha ann | **+5.70%** | -2.57% |
+| HAC t (lag 4) | **+3.04, p=0.002** | -0.46, p=0.64 |
+| Bootstrap alpha p (bs=4) | **0.008** | 0.61 |
+| Alpha SE | 0.156% | 0.461% (3× wider) |
+| Factor loadings | All noise | All noise |
+
+**Full paper-quality story arc is now complete:**
+
+1. **Main result:** NYSE Size5 EW, FF6-orthogonal alpha +5.70%/yr, HAC t=3.04, bootstrap p<0.01 uniform, factor-orthogonal (adj R² negative)
+2. **Robustness:** all HAC bandwidth choices (lags 4/6/8), all bootstrap block sizes (bs=3/4/6/8), NYSE-breakpoint methodology (CMN standard)
+3. **Mechanism:** VW L/S is null due to mega-mega-cap concentration; top-10 exclusion counterfactual restores the effect
+4. **Specific culprits:** Magnificent Seven + Big Healthcare/Finance rotators identified individually with per-firm stats
+
+This is the complete result section a first-draft paper would need.
+
 ## Current State (2026-07-24)
 
 - Repository at commit 94 (`8690d97`) with 465 tests passing (non-integration)

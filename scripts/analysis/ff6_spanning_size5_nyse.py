@@ -1,13 +1,11 @@
 """FF6 spanning regression on NYSE Size5 L/S returns.
 
 Companion to ff6_spanning_size4.py. Tests whether the NYSE-breakpoint
-Size5 CMN peak (raw Sharpe +1.177 EW at N=71) has incremental alpha
-after controlling for FF5 + Momentum.
+Size5 CMN peak has incremental alpha after controlling for FF5 + Momentum.
 
-Robustness of the in-sample Size4 finding: under CMN-standard NYSE
-breakpoints, the CMN peak moves to Size5 with Sharpe +1.177 (up from
-Size4 in-sample +0.638). This script tests whether the stronger raw
-signal is factor-orthogonal or absorbed by known exposures.
+CLI --weighting {ew, vw} loads the appropriate series from
+nyse_size5_ls_series.parquet (produced by
+scripts/exploration/nyse_size5_ls_series.py).
 
 Model:
   NYSE_Size5_LS ~ alpha + Mkt-RF + SMB + HML + RMW + CMA + MOM
@@ -16,30 +14,33 @@ Standard errors: HAC (Newey-West) with lags 4/6/8 for sensitivity.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
 
-SORT_PATH = Path("data/cache/lazy_prices_backtest/size_quintile_nyse_breakpoints.parquet")
+SERIES_PATH = Path("data/cache/lazy_prices_backtest/nyse_size5_ls_series.parquet")
 FF6_PATH = Path("data/cache/ff6_monthly.parquet")
-SIZE_BUCKET = 5
 HAC_LAGS = [4, 6, 8]
 
 
 def main() -> None:
-    print(f"Loading NYSE Size{SIZE_BUCKET} L/S series (EW)...")
-    sort = pd.read_parquet(SORT_PATH)
+    p = argparse.ArgumentParser()
+    p.add_argument("--weighting", choices=["ew", "vw"], default="ew",
+                   help="Weighting scheme (default: ew)")
+    args = p.parse_args()
+
+    print(f"Loading NYSE Size5 L/S series ({args.weighting.upper()})...")
+    series = pd.read_parquet(SERIES_PATH)
     ff6 = pd.read_parquet(FF6_PATH)
 
-    sort["date"] = pd.to_datetime(sort["date"])
+    series["date"] = pd.to_datetime(series["date"])
     ff6["date"] = pd.to_datetime(ff6["date"])
 
-    s = sort[sort.size_bucket == SIZE_BUCKET].copy()
-    q1 = s[s.lp_quintile == 1].set_index("date")["mean"].rename("q1")
-    q5 = s[s.lp_quintile == 5].set_index("date")["mean"].rename("q5")
-    ls = (q1 - q5).rename("ls_return").dropna()
+    col = f"ls_{args.weighting}"
+    ls = series.set_index("date")[col].dropna().rename("ls_return")
     print(f"  Series: {len(ls)} months, {ls.index.min()} to {ls.index.max()}")
 
     ff6_dec = ff6.copy()
@@ -61,7 +62,7 @@ def main() -> None:
 
     print()
     print("=" * 70)
-    print(f"FF6 spanning: NYSE Size{SIZE_BUCKET} L/S (EW) ~ Mkt-RF + SMB + HML + RMW + CMA + MOM")
+    print(f"FF6 spanning ({args.weighting.upper()}): NYSE Size5 L/S ~ Mkt-RF + SMB + HML + RMW + CMA + MOM")
     print("=" * 70)
 
     for lag in HAC_LAGS:
@@ -84,7 +85,7 @@ def main() -> None:
 
     print()
     print("=" * 70)
-    print(f"Annualized alpha summary (NYSE Size{SIZE_BUCKET} EW, HAC lag=4)")
+    print(f"Annualized alpha summary ({args.weighting.upper()}, HAC lag=4)")
     print("=" * 70)
     model = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={"maxlags": 4})
     alpha_monthly = model.params[0]
@@ -94,7 +95,7 @@ def main() -> None:
     print(f"  Annualized alpha: {alpha_annual*100:+.2f}%")
     print(f"  Raw L/S mean (unspanned): {joined['ls'].mean()*12*100:+.2f}% annualized")
 
-    out = Path(f"data/cache/lazy_prices_backtest/ff6_spanning_size5_nyse.parquet")
+    out = Path(f"data/cache/lazy_prices_backtest/ff6_spanning_size5_nyse_{args.weighting}.parquet")
     joined.reset_index().rename(columns={"index": "date"}).to_parquet(out, index=False)
     print(f"\nSaved: {out}")
 

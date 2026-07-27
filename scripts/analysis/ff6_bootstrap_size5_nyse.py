@@ -1,18 +1,18 @@
 """Block-bootstrap CI for NYSE Size5 L/S raw Sharpe and FF6 alpha.
 
-Companion to ff6_bootstrap_size4.py. Robustness for the NYSE-breakpoint
-Size5 finding (raw Sharpe +1.177 EW). Lag-independent significance test.
+Companion to ff6_bootstrap_size4.py. CLI --weighting {ew, vw} loads
+the appropriate series from nyse_size5_ls_series.parquet.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
 
 
-SORT_PATH = Path("data/cache/lazy_prices_backtest/size_quintile_nyse_breakpoints.parquet")
+SERIES_PATH = Path("data/cache/lazy_prices_backtest/nyse_size5_ls_series.parquet")
 FF6_PATH = Path("data/cache/ff6_monthly.parquet")
-SIZE_BUCKET = 5
 BLOCK_SIZES = [3, 4, 6, 8]
 N_RESAMPLES = 10_000
 SEED = 42
@@ -45,17 +45,19 @@ def _two_sided_p(x):
 
 
 def main() -> None:
-    print(f"Loading NYSE Size{SIZE_BUCKET} L/S (EW)...")
-    sort = pd.read_parquet(SORT_PATH)
+    p = argparse.ArgumentParser()
+    p.add_argument("--weighting", choices=["ew", "vw"], default="ew")
+    args = p.parse_args()
+
+    print(f"Loading NYSE Size5 L/S ({args.weighting.upper()})...")
+    series = pd.read_parquet(SERIES_PATH)
     ff6 = pd.read_parquet(FF6_PATH)
 
-    sort["date"] = pd.to_datetime(sort["date"])
+    series["date"] = pd.to_datetime(series["date"])
     ff6["date"] = pd.to_datetime(ff6["date"])
 
-    s = sort[sort.size_bucket == SIZE_BUCKET].copy()
-    q1 = s[s.lp_quintile == 1].set_index("date")["mean"].rename("q1")
-    q5 = s[s.lp_quintile == 5].set_index("date")["mean"].rename("q5")
-    ls = (q1 - q5).rename("ls_return").dropna()
+    col = f"ls_{args.weighting}"
+    ls = series.set_index("date")[col].dropna().rename("ls_return")
 
     for c in ["mkt_rf", "smb", "hml", "rmw", "cma", "mom", "rf"]:
         ff6[c] = ff6[c] / 100.0
@@ -78,7 +80,7 @@ def main() -> None:
 
     print()
     print("=" * 90)
-    print(f"Block bootstrap CI (NYSE Size{SIZE_BUCKET} EW), N_resamples = {N_RESAMPLES:,}")
+    print(f"Block bootstrap CI (NYSE Size5 {args.weighting.upper()}), N_resamples = {N_RESAMPLES:,}")
     print("=" * 90)
     print(f"Point estimates:")
     print(f"  Annualized Sharpe: {sharpe_point * ANNUAL_FACTOR:+.4f}")
@@ -103,8 +105,9 @@ def main() -> None:
               f"     [{a_lo:>+7.3f}%, {a_hi:>+7.3f}%]"
               f"    {p_alpha:>7.4f}")
 
-    out = Path(f"data/cache/lazy_prices_backtest/ff6_bootstrap_size5_nyse.parquet")
+    out = Path(f"data/cache/lazy_prices_backtest/ff6_bootstrap_size5_nyse_{args.weighting}.parquet")
     result = pd.DataFrame({
+        "weighting": [args.weighting],
         "n_months": [len(joined)],
         "sharpe_point_ann": [sharpe_point * ANNUAL_FACTOR],
         "alpha_point_ann": [alpha_point * 12],
