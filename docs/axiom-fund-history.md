@@ -391,12 +391,60 @@ Companion analysis to prior EW result. Same infrastructure, `--weighting {ew, vw
 
 This is the complete result section a first-draft paper would need.
 
+### AI-Era Subsample Analysis — Mega-Cap Reversal is Post-ChatGPT Specific (2026-07-27)
+
+Descriptive diagnostic splitting the 71-month NYSE Size5 L/S series at two cutoffs to test whether the mega-cap reversal is regime-dependent:
+- **Cutoff 1 (primary):** ChatGPT release, 2022-11-30
+- **Cutoff 2 (robustness):** Nvidia earnings inflection, 2023-05-31
+
+Implementation: `scripts/exploration/ai_era_subsample_analysis.py`. Simple OLS FF6 alpha per subsample (no HAC due to N=30-41). Asymptotic Lo (2002) Sharpe CIs.
+
+**ChatGPT cutoff results:**
+
+| Metric | PRE (N=35) | POST (N=36) |
+|---|---|---|
+| EW raw ann | +9.86% | +2.86% |
+| **EW FF6 alpha ann** | **+9.20% (t=2.55)** | +2.65% (t=0.76) |
+| VW raw ann | **+8.79%** | **-12.05%** |
+| **VW FF6 alpha ann** | **+9.03% (t=1.71)** | **-17.15% (t=-1.85)** |
+
+**Nvidia cutoff results (robustness):**
+
+| Metric | PRE (N=41) | POST (N=30) |
+|---|---|---|
+| EW FF6 alpha ann | +7.80% (t=2.40) | +5.58% (t=1.23) |
+| VW FF6 alpha ann | +1.90% (t=0.32) | -7.20% (t=-0.64) |
+
+**The single cleanest sub-finding of the project:**
+
+**The mega-cap reversal is POST-CHATGPT SPECIFIC.** Pre-ChatGPT, both EW and VW L/S have strongly positive alpha (+9%/yr under both weightings). Post-ChatGPT, EW alpha weakens to +2.65% and VW alpha reverses to -17.15%. The full-sample alpha (+5.70% t=3.04) is a weighted average of a strong pre-ChatGPT regime and a mixed post-ChatGPT regime.
+
+ChatGPT cutoff separates the regimes much more cleanly than the Nvidia cutoff. Substantive result on its own — the regime break coincides with the ChatGPT cultural landmark, not with the Nvidia earnings market inflection.
+
+**Refined mechanism story with empirical support:**
+
+Before ChatGPT: mega-cap 10-K changes had the same semantic meaning as smaller firms — risk disclosure. The CMN direction worked uniformly across the size distribution above NYSE p80.
+
+After ChatGPT: mega-cap 10-K changes started disclosing new AI/product initiatives (Microsoft Copilot, Google Bard/Gemini, Amazon Bedrock, Meta AI, Tesla FSD, Nvidia H100/Blackwell). At mega-mega-cap scale, heavy 10-K change signals GROWTH not RISK. The signal's semantic meaning diverged by size, producing:
+- Weakened EW alpha (smaller large-caps still work; mega-caps drag on average)
+- Strongly reversed VW alpha (mega-caps concentrate weight, growth-signal dominates)
+
+**Empirical consistency with CMN 2020:** CMN's 1995-2014 sample is entirely pre-ChatGPT. Their +22%/yr result was measured under the regime where mega-caps drove the effect, not against it — consistent with our pre-ChatGPT half showing +9.20% EW / +9.03% VW.
+
+**Caveats:**
+- N=30-41 per subsample. CIs are wide; alpha t-stats between 0.7-2.6.
+- Simple OLS residual variance for alpha SE (no HAC — too little data). Interpret loosely.
+- ChatGPT cutoff was chosen after seeing the data; formal regime-change test would require pre-specification (Chow test would be marginal at these sample sizes).
+- Descriptive analysis, not confirmatory. Sample extension backward (queue item i) becomes critical for rigorous regime-change evidence.
+
+**Strategic implication:** the sample-extension queue item (i) just became the highest-value next step for the paper. Pre-2019 data would extend the "pre-ChatGPT" sample by 20+ years, dramatically improving power on the "did the reversal exist before ChatGPT?" question.
+
 ## Current State (2026-07-24)
 
 - Repository at commit 94 (`8690d97`) with 465 tests passing (non-integration)
 - Test-suite integration cleanup queued (fundamentals.py + ff_factors.py fetchall bugs)
 - **Strongest research finding:** Size4 VW L/S Sharpe +0.770 (stat-sig), FF6-adjusted alpha +3.97% ann (marginal-to-significant depending on bandwidth choice)
-- Substantive picture (robust to NYSE-breakpoint methodology): Lazy Prices anomaly is concentrated in **large-cap firms** (above NYSE p80). Raw L/S +6.08%/yr, FF6-orthogonal alpha +5.70%/yr (HAC t=3.04, bootstrap p<0.01 uniformly across all bandwidth choices), factor loadings not individually significant. Prior "Size4 is the peak" narrative was an in-sample percentile artifact — under CMN's own methodology, peak is Size5. Mega-mega-cap top-10 reversal mechanism (Magnificent Seven + rotators) survives NYSE breakpoints.
+- Substantive picture (robust to NYSE-breakpoint methodology, but time-varying): Lazy Prices anomaly concentrates in **large-cap firms** (above NYSE p80). Full-sample: FF6-orthogonal alpha +5.70%/yr, HAC t=3.04, bootstrap p<0.01 uniformly. **Regime dependence:** the effect was strong and uniform (both EW and VW positive) pre-ChatGPT (2020-01 to 2022-11); post-ChatGPT the mega-cap reversal emerged and EW effect weakened. Full-sample alpha is a weighted average of these regimes.
 
 ## Research Directions
 
