@@ -90,6 +90,62 @@ All pre-committed thresholds met. Analysis A and B's 3-signal numbers cross-chec
 
 The honest one-sentence finding: *the strategy survives the holdout in pre-committed terms, but the window itself appears to have been regime-friendly* — max drawdowns under 5% across all variants, hit rates uniformly elevated, no 2020-style stress event. A robust OOS claim requires data containing a stress regime, which this window did not.
 
+## Lazy Prices research (v2 Item 6a)
+
+Replication and extension of Cohen-Malloy-Nguyen (2020), *"Lazy Prices"*, on a modern 2020-2025 sample. The signal measures year-over-year text change between consecutive 10-K filings; the original claim is that low-change firms (those whose 10-Ks read similarly to the prior year's) outperform high-change firms. axiom-fund uses TF-IDF cosine similarity across Items 1, 1A, and 7 as an approximation of the paper's exact methodology, which uses Jaccard similarity on whole documents (see [`docs/axiom-fund-history.md`](./docs/axiom-fund-history.md) for the full methodology comparison).
+
+### The finding
+
+The Lazy Prices anomaly concentrates in **large-cap firms** above the NYSE 80th percentile. Under CMN-standard NYSE-breakpoint methodology, the equal-weighted L/S portfolio in NYSE Size5 delivers annualized return **+6.08%**, FF6-adjusted alpha **+5.70%** with HAC t-statistic **3.04** (p = 0.002), and block-bootstrap p < 0.01 uniformly across block sizes 3-8. Adjusted R² is negative — the signal is factor-orthogonal.
+
+![NYSE Size5 cumulative L/S, EW vs VW](./docs/exhibits/lazy_prices_01_size5_cumulative.png)
+
+The equal-weighted L/S accrues steadily to +42% cumulative over the 71-month sample. The value-weighted L/S tracks EW through late 2022 and then declines to -15% cumulative — driven by a mega-cap concentration effect addressed below.
+
+### Size decomposition
+
+Under NYSE-breakpoint size buckets (rather than in-sample percentiles), the effect concentrates entirely in Size5 (firms above the NYSE 80th percentile, ≈ $12-19B market cap in modern dollars). Size2 through Size4 are effectively noise.
+
+![Lazy Prices L/S by NYSE size bucket](./docs/exhibits/lazy_prices_02_size_heterogeneity.png)
+
+Size1's -0.42 Sharpe is driven by extreme return magnitudes in a very small cohort (~24 firms per month), including a single-month outlier at +278% annualized. This is a low-N artifact, not a reliable pattern.
+
+An earlier iteration of this analysis used in-sample percentiles for the size buckets and reported the peak at Size4. That framing was an artifact of universe composition — axiom-fund's CRSP top-1000 universe is size-biased toward larger firms, which compresses in-sample percentile cutoffs downward. NYSE breakpoints (CMN's standard) correct this.
+
+### Mega-cap reversal mechanism
+
+Within Size5, the value-weighted L/S portfolio suffers because ~10 mega-mega-cap firms drive returns opposite to the CMN direction. Excluding the top-10 firms per rebalance date restores the CMN direction:
+
+![Mega-cap reversal: full vs excluding top-10](./docs/exhibits/lazy_prices_03_top10_mechanism.png)
+
+The identified firms are the Magnificent Seven (AAPL, MSFT, AMZN, NVDA, GOOG/GOOGL, META, TSLA) plus rotating Big Healthcare / Big Finance names (JNJ, JPM, UNH, AVGO, LLY). Mechanism interpretation: at mega-mega-cap scale, heavy 10-K change signals business evolution (new AI product lines, cloud infrastructure expansion, new therapeutics), not risk disclosure. NVDA is the poster child — average LP quintile 4.81 (nearly always in the high-change bucket) with average forward return +4.89% per month.
+
+### AI-era regime
+
+Splitting the 71-month sample at ChatGPT's November 2022 release reveals that the mega-cap reversal is post-ChatGPT specific:
+
+![Pre vs post ChatGPT FF6 alpha](./docs/exhibits/lazy_prices_04_ai_era_regime.png)
+
+Pre-ChatGPT (2020-01 to 2022-11, N=35), both weighting schemes showed strongly positive alpha (+9.2% EW, +9.0% VW). Post-ChatGPT (2022-12 to 2025-11, N=36), EW weakened to +2.6% and VW reversed to -17.2%. The full-sample +5.70% alpha is a weighted average across these two regimes.
+
+This finding is descriptive rather than confirmatory (N=35-36 per half; simple OLS residual variance for alpha SE; no HAC). But it is directionally clean, and the ChatGPT cutoff separates regimes more sharply than a Nvidia earnings-inflection cutoff (2023-05) does. Mechanism reading: mega-cap 10-K changes prior to ChatGPT signaled risk in the same direction as smaller firms; after ChatGPT, they signaled AI and product growth, inverting the CMN direction at that scale. Extending the sample backward to CMN's original 1995-2014 window would sharpen this claim substantially; that infrastructure work is queued as a separate research project.
+
+### Robustness and caveats
+
+The full-sample +5.70% ann alpha is robust across:
+
+- HAC standard-error bandwidths (Newey-West lags 4, 6, 8 — all p < 0.005)
+- Block-bootstrap block sizes (3, 4, 6, 8 — all p < 0.01)
+- NYSE-breakpoint methodology (CMN standard) vs in-sample percentiles
+
+Key caveats:
+
+- **N = 71 months.** CMN's original result was measured on ~20 years of data. Extending the sample backward is the highest-value next research step.
+- **Methodological approximation.** axiom-fund uses TF-IDF cosine per section; CMN's actual replication code uses Jaccard similarity on whole documents, with prior-year percentile binning and FF3+MOM+Pastor-Stambaugh liquidity factor controls (not FF5+MOM). A faithful replication project is scoped in a separate repository.
+- **Regime-dependence.** The full-sample alpha averages a strong pre-ChatGPT regime with a substantially weakened post-ChatGPT regime.
+
+Full technical audit trail — sign-convention correction, size-heterogeneity discovery, FF6 spanning and bootstrap detail, mega-cap firm identification, CMN methodology comparison — in [`docs/axiom-fund-history.md`](./docs/axiom-fund-history.md).
+
 ## Architecture
 
 Four layers, each a separately-testable Python module:
@@ -205,7 +261,7 @@ Methodological upgrades to v1's statistical inference, liquidity treatment, and 
 
 - **Item 4 — Deflated Sharpe Ratio (closed).** Bailey & López de Prado (2014) DSR implementation in [`src/axiom_fund/diagnostics/inference.py`](./src/axiom_fund/diagnostics/inference.py); 15 unit tests; applied to v1's three holdout variants at N = 3, 7, 20 ([`scripts/analysis/apply_dsr_to_v1.py`](./scripts/analysis/apply_dsr_to_v1.py)). **First v2 finding that materially changes a v1 qualitative conclusion**: 3-sig and 4-sig composites containing ResMom fail DSR at all N; no-ResMom (the headline Sharpe 1.77 variant) clears DSR = 0.965 at N = 3 but fails at any broader trial count. The 1.77 nominal Sharpe is significant only under the narrowest possible variant interpretation. Full analysis in [`docs/v2_diagnostics_findings.md`](./docs/v2_diagnostics_findings.md).
 - **Item 5 — Quandt-Andrews structural-break test (closed).** Hansen (1997) sup-F implementation with full Table 2 lookup in [`src/axiom_fund/diagnostics/structural_break.py`](./src/axiom_fund/diagnostics/structural_break.py); 18 unit tests including independent cross-check against Andrews (1993) critical values; applied to v1's four monthly IC series ([`scripts/analysis/apply_qa_to_ic.py`](./scripts/analysis/apply_qa_to_ic.py)). **No signal shows statistically significant evidence of a structural break in mean IC.** Strongest candidate is IVol (sup_F = 7.17, break 2021-01-29, p = 0.097), which does not clear conventional 5%. v1's regime references should be treated as descriptive observations about subperiods, not established empirical findings. Full analysis in [`docs/v2_diagnostics_findings.md`](./docs/v2_diagnostics_findings.md).
-- **Item 6 — Lazy Prices NLP signal** (Cohen-Malloy-Nguyen 2020): year-over-year cosine distance between consecutive 10-K filings, computed locally via `sentence-transformers` from SEC EDGAR. The text channel.
+- **Item 6a — Lazy Prices NLP signal (closed).** Cohen-Malloy-Nguyen (2020) replication on a 2020-2025 sample, using TF-IDF cosine across Items 1/1A/7 as an approximation of the paper's Jaccard-on-whole-document methodology. NYSE Size5 EW L/S produces FF6-orthogonal alpha +5.70%/yr (HAC t = 3.04, bootstrap p < 0.01). Mega-cap reversal mechanism identified: excluding the top-10 mega-caps under value-weighting flips the sign. AI-era regime finding: reversal is post-ChatGPT specific. Full findings in the [Lazy Prices research](#lazy-prices-research-v2-item-6a) section above; technical audit trail in [`docs/axiom-fund-history.md`](./docs/axiom-fund-history.md).
 - **Item 7 — Walk-forward IC weighting variant** as a research exercise on overfitting risk in signal-weight selection.
 - **Item 8 — Simple regime overlay** with binary regime indicator gating gross exposure, directly addressing the holdout-was-easy caveat.
 
@@ -221,6 +277,7 @@ Methodological upgrades to v1's statistical inference, liquidity treatment, and 
 - Ang, A., Hodrick, R. J., Xing, Y., & Zhang, X. (2006). The cross-section of volatility and expected returns. *Journal of Finance*.
 - Bernard, V. L., & Thomas, J. K. (1989). Post-earnings-announcement drift: delayed price response or risk premium? *Journal of Accounting Research*.
 - Blitz, D., Huij, J., & Martens, M. (2011). Residual momentum. *Journal of Empirical Finance*.
+- Cohen, L., Malloy, C., & Nguyen, Q. (2020). Lazy prices. *Journal of Finance*.
 - Corwin, S. A., & Schultz, P. (2012). A simple way to estimate bid-ask spreads from daily high and low prices. *Journal of Finance*.
 - Fama, E. F., & French, K. R. (1993). Common risk factors in the returns on stocks and bonds. *Journal of Financial Economics*.
 - Foster, G., Olsen, C., & Shevlin, T. (1984). Earnings releases, anomalies, and the behavior of security returns. *The Accounting Review*.
