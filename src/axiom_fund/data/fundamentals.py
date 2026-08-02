@@ -123,8 +123,18 @@ class Fundamentals:
               AND exchcd IN (1, 2, 3)
             ORDER BY permno, namedt DESC;
         """
+        # NOTE: pd.read_sql fails on SQLAlchemy 1.4 + pandas 2.3.
+        # Same workaround as returns.py: execute + fetchall + DataFrame().
         with self._db.engine.connect() as conn:
-            crsp_df = pd.read_sql(text(crsp_sql), conn, params={"as_of": as_of_str})
+            result = conn.execute(text(crsp_sql), {"as_of": as_of_str})
+            crsp_df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            for col in crsp_df.select_dtypes(include="object").columns:
+                if col in ("permno", "cusip", "ncusip", "ticker", "comnam"):
+                    continue
+                try:
+                    crsp_df[col] = pd.to_numeric(crsp_df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
 
         # Step 2: all (gvkey, 9-char cusip) pairs from fundq
         comp_sql = """
@@ -133,7 +143,9 @@ class Fundamentals:
             WHERE cusip IS NOT NULL;
         """
         with self._db.engine.connect() as conn:
-            comp_df = pd.read_sql(text(comp_sql), conn)
+            result = conn.execute(text(comp_sql))
+            comp_df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # All columns here are string/ID types — no numeric coercion needed.
 
         # Match on 8-char CUSIP prefix
         comp_df["cusip8"] = comp_df["cusip"].str[:8].str.upper()
@@ -203,7 +215,9 @@ class Fundamentals:
             FROM crsp_side c;
         """
         with self._db.engine.connect() as conn:
-            crsp_links = pd.read_sql(text(link_sql), conn)
+            result = conn.execute(text(link_sql))
+            crsp_links = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # permno stays as-is; cusip8_crsp is a string.
 
         # Pull Compustat-side cusip8->gvkey mapping
         comp_link_sql = """
@@ -214,7 +228,9 @@ class Fundamentals:
             WHERE cusip IS NOT NULL;
         """
         with self._db.engine.connect() as conn:
-            comp_links = pd.read_sql(text(comp_link_sql), conn)
+            result = conn.execute(text(comp_link_sql))
+            comp_links = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # gvkey + cusip8_comp are both string columns.
 
         # Join CRSP <-> Compustat on cusip8
         link_df = crsp_links.merge(
@@ -253,7 +269,17 @@ class Fundamentals:
         """
         params: dict[str, str] = {"start_date": start_str, "end_date": end_str}
         with self._db.engine.connect() as conn:
-            fund_df = pd.read_sql(text(fund_sql), conn, params=params)
+            result = conn.execute(text(fund_sql), params)
+            fund_df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            for col in fund_df.select_dtypes(include="object").columns:
+                if col in ("gvkey", "cusip", "tic", "conm", "sich", "sic",
+                           "gsector", "ggroup", "gind", "gsubind",
+                           "datacqtr", "datafqtr"):
+                    continue
+                try:
+                    fund_df[col] = pd.to_numeric(fund_df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
 
         if len(fund_df) == 0:
             return pd.DataFrame(columns=list(FUNDAMENTAL_COLUMNS))

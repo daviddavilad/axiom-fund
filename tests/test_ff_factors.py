@@ -23,8 +23,55 @@ from axiom_fund.data.ff_factors import (
 # ============================================================================
 
 
+class _StubResult:
+    """SQLAlchemy Result-shaped stub — exposes fetchall() and keys()."""
+
+    def __init__(self, df: pd.DataFrame) -> None:
+        self._df = df
+
+    def fetchall(self) -> list[tuple[Any, ...]]:
+        return list(self._df.itertuples(index=False, name=None))
+
+    def keys(self) -> list[str]:
+        return list(self._df.columns)
+
+
+class _StubConn:
+    """SQLAlchemy Connection-shaped stub. Context manager + execute()."""
+
+    def __init__(self, df: pd.DataFrame, calls: list[tuple[Any, Any]]) -> None:
+        self._df = df
+        self._calls = calls
+
+    def __enter__(self) -> "_StubConn":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def execute(self, sql: Any, params: Any = None) -> _StubResult:
+        # Records via the parent stub's `calls` list for assertion access.
+        self._calls.append((str(sql), params))
+        return _StubResult(self._df)
+
+
+class _StubEngine:
+    """SQLAlchemy Engine-shaped stub. .connect() returns a context manager."""
+
+    def __init__(self, df: pd.DataFrame, calls: list[tuple[Any, Any]]) -> None:
+        self._df = df
+        self._calls = calls
+
+    def connect(self) -> _StubConn:
+        return _StubConn(self._df, self._calls)
+
+
 class _StubConnection:
-    """Records every SQL call and returns a canned DataFrame."""
+    """Records every SQL call and returns a canned DataFrame.
+
+    Exposes both raw_sql() (legacy path, retained for protocol compliance)
+    and engine.connect() (current path used by fetch()).
+    """
 
     def __init__(self, return_df: pd.DataFrame | None = None) -> None:
         self._return_df = (
@@ -32,6 +79,10 @@ class _StubConnection:
             else pd.DataFrame(columns=list(FF_FACTOR_COLUMNS))
         )
         self.calls: list[tuple[str, dict[str, Any] | None]] = []
+
+    @property
+    def engine(self) -> _StubEngine:
+        return _StubEngine(self._return_df, self.calls)  # type: ignore[arg-type]
 
     def raw_sql(self, sql: str, params: dict[str, Any] | None = None) -> pd.DataFrame:
         self.calls.append((sql, params))

@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Protocol
+from typing import Any, Protocol
 
 import pandas as pd
+from sqlalchemy import text
 
 # Output columns in canonical order (date first, then factors, then rf, then umd).
 FF_FACTOR_COLUMNS: tuple[str, ...] = (
@@ -32,6 +33,8 @@ FF_FACTOR_COLUMNS: tuple[str, ...] = (
 
 class _DBConnection(Protocol):
     """Protocol for a WRDS connection. Matches wrds.Connection structurally."""
+
+    engine: Any
 
     def raw_sql(self, sql: str, params: dict[str, object] | None = None) -> pd.DataFrame: ...
 
@@ -96,11 +99,27 @@ class FFFactors:
         sql = f"""
             SELECT date, mktrf, smb, hml, rf, umd
             FROM {self._config.library}.{self._config.table}
-            WHERE date >= CAST(%(start)s AS DATE)
-              AND date <= CAST(%(end)s AS DATE)
+            WHERE date >= CAST(:start AS DATE)
+              AND date <= CAST(:end AS DATE)
             ORDER BY date
         """
-        df = self._db.raw_sql(sql, params={"start": start_str, "end": end_str})
+        # NOTE: self._db.raw_sql() internally calls pd.read_sql_query() which
+        # fails on SQLAlchemy 1.4 + pandas 2.3 with `AttributeError:
+        # 'Connection' object has no attribute 'cursor'`. Same incompatibility
+        # as returns.py; same workaround: execute + fetchall + DataFrame() via
+        # the SQLAlchemy engine directly.
+        with self._db.engine.connect() as conn:
+            result = conn.execute(text(sql), {"start": start_str, "end": end_str})
+            df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+            # Coerce Decimal columns to float (fetchall returns Decimal for
+            # numeric SQL types; pd.read_sql would have coerced these).
+            for col in df.select_dtypes(include="object").columns:
+                if col == "date":
+                    continue
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                except (ValueError, TypeError):
+                    pass
 
         if len(df) == 0:
             return pd.DataFrame(columns=list(FF_FACTOR_COLUMNS))
