@@ -4,6 +4,22 @@ Status: **scoping (Item 6a in progress)**
 Owner: David Davila
 Reference: Cohen, Malloy, Nguyen (2020), "Lazy Prices," *Journal of Finance* 75(3):1371-1415
 
+---
+
+> **Design doc corrections summary (2026-08-01)**
+>
+> This doc is preserved as-is as the Item 6a pre-commitment record. Several sections have been substantively superseded by findings that emerged 2026-07-20 through 2026-07-27. Rather than rewriting the pre-commitment text (which would destroy the audit trail), corrections are noted inline at the affected sections and a comprehensive update appears at the end. Key items:
+>
+> - **Sign convention inverted throughout the pre-commitment.** The "long-top, short-bottom" framing at lines 22 and 127 has the CMN direction inverted. CMN's finding is that LOW-change firms OUTPERFORM. The correct portfolio is LONG-Q1 (low change), SHORT-Q5 (high change). The runner had `long_quintile` inverted; wrong-convention L/S ran for weeks (2026-07-13 through 2026-07-18) before per-quintile diagnostics surfaced the issue. Caught 2026-07-20 (commit `3d50ed0`); direction-locked with tests in commit `7d33227`.
+> - **"Compositional interpretation" of the 2026-07-16 negative L/S finding was inverted.** The SPAC/biotech Q5 narrative was arithmetically correct on wrong-convention L/S but conceptually flipped — those firms were being longed as high-change names, not shorted. Under the corrected convention, the same firms are correctly shorted and the L/S sign matches CMN.
+> - **Success criteria met via a substantially different path than originally scoped.** The pre-committed criteria at lines 94-104 assumed a pooled-universe backtest. The actual publishable finding required NYSE-breakpoint methodology (CMN's standard, superseding in-sample percentiles) and size-conditional analysis. Under NYSE Size5 EW, the FF6-orthogonal alpha is **+5.70%/yr with HAC t=3.04, bootstrap p<0.01 uniformly across block sizes 3-8**.
+> - **Sample window and universe expanded.** Pre-committed: 2019-2024, 1,448 firms, 96.1% CIK resolution. Actual: 2020-01 to 2025-11 (71 months), 1,519 firms, 96.2% CIK resolution.
+> - **Methodological approximation clarified.** CMN's actual replication code (located on Wiley Online Library, 2026-07-24) uses Jaccard on whole documents with FF3+MOM+Pastor-Stambaugh Liquidity on a 1995-2017 sample. axiom-fund's approach (TF-IDF cosine per section, FF5+MOM) is an approximation. A faithful CMN replication project exists in a separate repository.
+>
+> Full corrected technical arc: [`docs/axiom-fund-history.md`](./axiom-fund-history.md).
+
+---
+
 ## Motivation
 
 Cohen-Malloy-Nguyen (CMN) 2020 report that firms whose annual 10-K filings change **less** year-over-year subsequently underperform. Their interpretation: managers copy from prior filings when the fundamental picture is deteriorating or uninformative, rather than rewriting to reflect genuine changes. The signal is orthogonal to standard fundamentals (accruals, momentum, quality) — it's about disclosure behavior, not financial performance directly.
@@ -22,6 +38,7 @@ Per CMN:
 - **Signal definition:** `signal = 1 - cosine_similarity`. Higher signal = more textual change = we predict *outperformance* per CMN's inverse relationship
 - **Portfolio:** long-top-quintile vs short-bottom-quintile on the signal, holding period ~12 months (until next 10-K filing)
 - **Timing:** signal observable at 10-K filing date (typically 60-90 days after fiscal year end); portfolio formed at first month-end following filing
+> **Correction (2026-07-20):** The signal-definition and portfolio bullets above have the CMN direction inverted. CMN's finding is that LOW year-over-year change firms subsequently OUTPERFORM (their behavioral hypothesis: managers copy from prior filings when the picture is stable and rewrite when there are new developments — meaning the "change" tail contains firms that had to disclose something new, often negative). The correct portfolio is therefore LONG-Q1 (bottom quintile of signal), SHORT-Q5 (top quintile of signal), not the other way around. All narrative below dated 2026-07-16 through 2026-07-18 has this framing inverted; interpretations flip when the sign is corrected. Fix: `long_quintile` parameter added to `compute_long_short_returns` with direction-locking tests (commits `3d50ed0`, `7d33227`).
 
 ## Scope: Item 6a, 6b, 6c
 
@@ -295,6 +312,8 @@ Verification session traced the number through the pipeline:
 
 The negative L/S sign is a real finding about sample composition, not signal noise or infrastructure bugs. Whether the CMN Long-Short prediction generalizes to periods dominated by SPAC and biotech binary events is the empirical question this study answers with "no, and here is why."
 
+> **Correction (2026-07-20):** The compositional interpretation above is INVERTED. The runner was longing Q5 (high-change firms) and shorting Q1 (low-change firms), opposite to CMN's direction. Under the correct convention (long Q1, short Q5), the SPAC/biotech binary-event firms in Q5 are being SHORTED, not longed, and the L/S direction MATCHES CMN's finding: low-change firms outperform, high-change firms underperform. What appeared to be a "compositional out-of-sample reversal" was in fact CMN's original direction reproducing correctly, just observed through an inverted L/S output. The per-quintile monotonicity (Q1 Sharpe +0.77 > ... > Q5 Sharpe +0.58) was the diagnostic clue that surfaced the sign flip.
+
 Verification scripts committed under scripts/exploration/verify_backtest_stage{1,2,3}.py.
 
 Statistical significance testing (bootstrap CI, HAC t-stat via the Item 3 framework), value-weighted robustness, and formal write-up deferred to next sessions.
@@ -349,13 +368,52 @@ Same signal panel, same universe, same rebalance calendar. Value-weighted result
 2. Neither estimate is significant; we cannot claim CMN-direction "confirmed" — only that the sign question is compositional.
 3. Value-weighted single-leg Sharpes (+1.11, +1.12) are very high. Consistent with mega-cap dominance in 2019-2024 rather than pure signal alpha.
 
-## Next steps
+> **Correction (2026-07-22):** The value-weighted N=41 sample was biased by a `merge_asof` calendar-vs-trading-date bug in `weights_df` filtering — 21 rebalance dates fell on weekends or US holidays with no exact-match trading day, producing NaN weights and dropping those months. Fix (commit `b77c019`): per-permno `merge_asof` with `direction="backward"` to look up marketcap on last trading day ≤ rebalance date. VW N: 41 → 71 matching EW. The "sign flip under value-weighting" interpretation above is superseded once (i) N is corrected via this fix and (ii) the sign convention is corrected per the 2026-07-20 note. Refined finding: within upper-mid-cap and large-cap NYSE-breakpoint size buckets, both EW and VW L/S are directionally consistent with CMN and produce factor-orthogonal alpha. Within the top ~10 mega-mega-cap firms specifically, VW L/S reverses due to a mega-cap concentration effect (the Magnificent Seven + Big Healthcare/Finance rotators, whose heavy 10-K changes signal AI/growth investments rather than risk). See [`docs/axiom-fund-history.md`](./axiom-fund-history.md) for the full mechanism.
 
-**Next session:** refactor `src/axiom_fund/signals/lazy_prices.py` output schema to conform to `docs/signal_design.md` §2.1 signal-panel contract (date, permno, raw_signal, winsorized, z_score). Update the 9 tests. Recompute the signal file. See Backtest scope (2026-07-12).
+## Findings update (2026-07-20 through 2026-08-01)
 
-**Following sessions:** extend `signals/alignment.py` with annual carry rule; write the backtest runner over existing infrastructure (`forward_returns.py`, `metrics.py`, `data/returns.py`); report Sharpe, hit rate, drawdowns, then bootstrap CI and HAC t-stat per success-criteria pre-commitment at line 94-104.
+The "Next steps" scope originally documented at this location is preserved in git history at commit `d92e434` and earlier; the actual research arc from 2026-07-20 forward is summarized here. Full technical audit trail at [`docs/axiom-fund-history.md`](./axiom-fund-history.md).
 
-**Later:** Item 6b (transformer extension). Item 6c (composite integration, conditional on 6a success).
+**Sign convention correction (2026-07-20 → -21, commits `3d50ed0`, `7d33227`).** Per-quintile diagnostic revealed the runner was longing Q5 and shorting Q1, opposite to CMN. Fixed with explicit `long_quintile: Literal["top", "bottom"]` parameter (default `"top"` preserves backward compatibility for GP/IVol/PEAD/ResMom; Lazy Prices runner sets `"bottom"`) and 5 direction-locking regression tests. All prior "sign flip vs CMN" claims were arithmetically correct on wrong-convention L/S but conceptually inverted.
+
+**Value-weighted N=50 bug fix + size-tercile discovery (2026-07-22, commit `b77c019`).** `merge_asof` calendar-vs-trading-date fix; VW N corrected from 50 to 71 matching EW. Size-tercile diagnostic revealed the pooled result masks a size-conditional structure: Small L/S Sharpe -0.370, Mid -0.256, Large **+1.197** (first plausibly stat-sig finding).
+
+**Size-quintile refinement (2026-07-23, commit `9cb0fc0`).** 5×5 sort with in-sample percentiles: Size4 peaks at Sharpe +0.638 EW, +0.770 VW; Size5 is near-zero EW but Sharpe -0.528 VW (mega-cap concentration reverses). The pooled result dilutes Size4's signal with noise from other size buckets.
+
+**FF6 spanning + block bootstrap (2026-07-24, commits `366a365`, `8690d97`).** Size4 VW L/S FF6 alpha +3.97%/yr, HAC t=1.86-2.19 depending on lag; block bootstrap alpha p=0.087 (bs=4), p=0.017 (bs=8); adjusted R² near zero. Marginal-to-significant depending on bandwidth. Factor loadings HML +0.176 (t=2.02 marginal), CMA -0.154, SMB -0.130; MKT-RF/RMW/MOM noise.
+
+**Top-10 mega-caps diagnostic (2026-07-24, commit `cb28443`).** Excluding the top-10 firms by market cap per rebalance date flips Size5 VW L/S from Sharpe -0.528 to +0.119. Identified firms: Magnificent Seven (AAPL, MSFT, AMZN, NVDA, GOOG/GOOGL, META, TSLA) plus Big Healthcare/Finance rotators (JNJ, JPM, UNH, AVGO, LLY). NVDA is the poster child — average LP quintile 4.81, average forward return +4.89%/month.
+
+**CMN 2020 replication code discovered (2026-07-24).** Located on Wiley Online Library supplementary materials for jofi.12885. Files: `step1_prepExtract.pl`, `step1b_prepExtract.do`, `run_step2.sh`, `step2_extractSimilarity.pl`, `step2b_extractSimilarity.do`, `step3_runPortfolio.do`. Critical methodological differences from axiom-fund's implementation:
+
+| Aspect | axiom-fund | CMN 2020 code |
+|---|---|---|
+| Signal metric | TF-IDF cosine | **Jaccard** (step3 line 34: `gen sim_use = simjaccard`) |
+| Section granularity | Item 1 + 1A + 7 average | **Whole document** |
+| Binning | Current cross-section quintiles | **Prior year percentiles** |
+| Carry rule | Until next filing | **Lag 1-5 months, fill-forward** |
+| Factor model | FF5 + MOM | **FF3 + MOM + Pastor-Stambaugh Liquidity** |
+| Sample | 2019-2025 | 1995-2017 |
+
+axiom-fund's implementation is an approximation, not a faithful replication. A faithful CMN replication project is scoped in a separate repository (project handoff completed 2026-07-31).
+
+**Flagship result — NYSE-breakpoint robustness (2026-07-25, commits `9c6df30`).** Under CMN-standard NYSE size breakpoints (fetched from `crsp.msf_v2` filtered to primary-exchange NYSE common stock), the CMN peak moves from in-sample Size4 (an artifact of universe composition) to NYSE Size5 (above NYSE p80, ≈ $12-19B modern dollars).
+
+- Size5 EW raw L/S: **+6.08%/yr**, Sharpe +1.177
+- Size5 EW FF6 alpha: **+5.70%/yr**, HAC t = **3.04** (p=0.002), lag 6 t=3.18, lag 8 t=3.32
+- Bootstrap alpha p-value uniform across block sizes 3-8: **0.008**
+- Adjusted R² = -0.030 (no individual factor loading significant)
+- 94% of raw L/S survives factor spanning
+
+**Meets and exceeds the pre-committed success criteria at lines 94-104 of this doc** (Sharpe > 0.3 with CI excluding zero, direction matches CMN, effect survives HAC-corrected t-statistic).
+
+**Size5 VW spanning + AI-era regime (2026-07-26, -27, commits `6cc9b08`, `8a993e0`).** VW alpha is null (HAC t=-0.46, bootstrap p>0.5 uniformly) — mega-cap concentration adds volatility without directional signal, alpha SE 3× wider than EW. AI-era subsample analysis splitting at ChatGPT (2022-11-30): pre-ChatGPT both weightings +9%/yr alpha; post-ChatGPT EW +2.6%, VW -17.2%. Descriptive not confirmatory (N=35 per half) but directionally unambiguous. Mechanism: at mega-mega-cap scale, heavy 10-K change signals AI/product growth rather than risk disclosure.
+
+**Sample and universe corrections vs pre-commitment.** Sample landed at 2020-01 to 2025-11 (71 months, extended from 2019-2024 via CRSP v2 table migration and forward extension work). Universe expanded to 1,519 firms (from 1,448) with 96.2% CIK resolution.
+
+**Item 6a status: closed 2026-08-01 (commit `6ca458b`).** README research section shipped with 4 exhibit charts (`docs/exhibits/lazy_prices_0[1-4]_*.png`), test suite at 465 passing, project memory reorganized into [`docs/axiom-fund-history.md`](./axiom-fund-history.md) (professional history) and `docs/axiom-fund.md` (personal notes, gitignored). Faithful CMN replication continues in a separate repository.
+
+**Follow-up items on axiom-fund forward roadmap:** test-suite integration cleanup (`fundamentals.py` + `ff_factors.py` fetchall bugs), project structure cleanup pass, then **Short Interest as the next factor**.
 
 ## Known limitations
 
